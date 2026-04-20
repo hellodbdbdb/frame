@@ -11,6 +11,7 @@ import {
   saveQuestion,
   logPractice,
   loadLogs,
+  clearAllLogs,
   startSession,
   endSession,
   loadSessions
@@ -1019,8 +1020,27 @@ function renderMockRate() {
 
 // ---------- history ----------
 
+async function handleResetReadiness() {
+  const n = state.logs.length;
+  const msg = n
+    ? `Reset readiness? This permanently deletes ${n} practice log${n === 1 ? "" : "s"}.`
+    : "Reset readiness? There is nothing to delete right now.";
+  if (!confirm(msg)) return;
+  try {
+    await clearAllLogs(state.user.uid);
+    await refreshData();
+    go("home");
+  } catch (err) {
+    alert("Could not reset: " + (err?.message || err));
+  }
+}
+
 function renderHistory() {
-  const nodes = [el("h1", { text: "history" })];
+  const header = el("div", { class: "history-head" }, [
+    el("h1", { text: "history", style: { margin: "0" } }),
+    el("button", { class: "btn ghost small", onClick: handleResetReadiness }, ["reset readiness"])
+  ]);
+  const nodes = [header];
 
   if (!state.logs.length) {
     nodes.push(el("div", { class: "empty" }, [el("p", { text: "No practice yet. Start from home." })]));

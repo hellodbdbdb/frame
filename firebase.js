@@ -21,6 +21,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
   collection,
   getDocs,
   addDoc,
@@ -194,6 +195,20 @@ export async function loadLogs(uid, max = 500) {
   const rows = [];
   snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
   return rows;
+}
+
+export async function clearAllLogs(uid) {
+  const snap = await getDocs(logsCol(uid));
+  if (snap.empty) return 0;
+  // Firestore batches cap at 500 writes.
+  const docs = [];
+  snap.forEach((d) => docs.push(d.ref));
+  for (let i = 0; i < docs.length; i += 450) {
+    const batch = writeBatch(db);
+    for (const ref of docs.slice(i, i + 450)) batch.delete(ref);
+    await batch.commit();
+  }
+  return docs.length;
 }
 
 // ---------- sessions ----------
