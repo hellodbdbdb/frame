@@ -434,7 +434,7 @@ function renderHome() {
       kicker: "focus",
       title: "Improve",
       copy: `${weak.length} questions picked by low strength × high staleness`,
-      cta: "Start drill",
+      cta: "Start learning",
       letter: "i",
       onClick: () => startDrillPool("Improve", weak.map((q) => q.id))
     }),
@@ -442,7 +442,7 @@ function renderHome() {
       variant: "mint",
       kicker: "breadth",
       title: "Random",
-      copy: "10 random questions across every theme, drilled in sequence",
+      copy: "10 random questions across every theme, in sequence",
       cta: "Start run",
       letter: "r",
       onClick: () => {
@@ -519,7 +519,7 @@ function renderSet(kind) {
   }
   mount(
     el("h1", { text: title }),
-    el("p", { class: "muted", text: "Tap a question to drill or browse." }),
+    el("p", { class: "muted", text: "Tap a question to learn or browse." }),
     ...list.map((q) =>
       el("button", { class: "question-row", onClick: () => go(`detail/${q.id}`) }, [
         strengthDot(strengthFor(q.id)),
@@ -576,7 +576,7 @@ function renderDetail(qid) {
   nodes.push(el("h2", { text: "Practice" }));
   nodes.push(el("div", { class: "row stretch" }, [
     el("button", { class: "btn", onClick: () => go(`drill/${qid}`) }, [
-      el("span", { text: "drill this question" }),
+      el("span", { text: "learn this question" }),
       el("span", { class: "arrow", "aria-hidden": "true", text: "\u2192" })
     ])
   ]));
@@ -713,7 +713,9 @@ function escapeHtml(s) {
 }
 
 function modeLabel(mode) {
-  return mode === "mock" ? "live" : mode;
+  if (mode === "mock") return "live";
+  if (mode === "drill") return "learn";
+  return mode;
 }
 
 function buildAnchorCard(q, qid) {
