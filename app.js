@@ -565,10 +565,7 @@ function renderDetail(qid) {
       el("h3", { text: "Question" }),
       el("p", { text: q.prompt })
     ]),
-    el("div", { class: "card" }, [
-      el("h3", { text: "Anchor phrase" }),
-      el("p", { class: "drill-prompt", text: q.anchor, style: { fontSize: "18px", margin: "0" } })
-    ]),
+    buildAnchorCard(q, qid),
     el("div", { class: "card" }, [
       el("h3", { text: "Your answer" }),
       el("div", { class: "answer-body", html: mdToHtml(q.answer) })
@@ -723,6 +720,51 @@ function escapeHtml(s) {
 
 function modeLabel(mode) {
   return mode === "mock" ? "live" : mode;
+}
+
+function buildAnchorCard(q, qid) {
+  const card = el("div", { class: "card anchor-card" }, []);
+
+  function showView() {
+    card.innerHTML = "";
+    card.appendChild(el("div", { class: "anchor-head" }, [
+      el("h3", { text: "Anchor phrase" }),
+      el("button", { class: "btn ghost small", onClick: showEdit }, ["edit"])
+    ]));
+    card.appendChild(el("p", {
+      class: "anchor-text",
+      text: q.anchor || "—",
+      style: { margin: "6px 0 0" }
+    }));
+  }
+
+  function showEdit() {
+    card.innerHTML = "";
+    const ta = el("textarea", { class: "compact" }, [q.anchor || ""]);
+    const saveBtn = el("button", { class: "btn small", onClick: async () => {
+      const next = ta.value.trim();
+      saveBtn.setAttribute("disabled", "");
+      try {
+        await saveQuestion(state.user.uid, qid, { anchor: next });
+        q.anchor = next;
+        if (state.questionsById[qid]) state.questionsById[qid].anchor = next;
+        showView();
+      } catch (err) {
+        saveBtn.removeAttribute("disabled");
+        alert("Could not save: " + (err?.message || err));
+      }
+    }}, ["save"]);
+    card.appendChild(el("h3", { text: "Anchor phrase" }));
+    card.appendChild(ta);
+    card.appendChild(el("div", { class: "row", style: { marginTop: "10px", gap: "8px" } }, [
+      saveBtn,
+      el("button", { class: "btn ghost small", onClick: showView }, ["cancel"])
+    ]));
+    ta.focus();
+  }
+
+  showView();
+  return card;
 }
 
 // ---------- mock mode ----------
