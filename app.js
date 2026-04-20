@@ -639,25 +639,25 @@ function renderDrill(mode, qid) {
     ratingRow
   ]);
 
-  const postRating = el("div", { class: "post-rating", hidden: true });
-
   const back = el("div", { class: "flipcard-face flipcard-back card" }, [
     backInner,
-    ratingBox,
-    postRating
+    ratingBox
   ]);
 
   inner.appendChild(front);
   inner.appendChild(back);
   flipcard.appendChild(inner);
 
+  const feedbackEl = el("div", { class: "drill-feedback", text: "" });
+
   function flipToBack() {
     flipcard.classList.add("flipped");
   }
   function flipToFront() {
     flipcard.classList.remove("flipped");
-    postRating.hidden = true;
     ratingRow.querySelectorAll("button").forEach((b) => b.classList.remove("chosen"));
+    feedbackEl.textContent = "";
+    feedbackEl.classList.remove("saved");
   }
 
   async function handleRate(n, btn) {
@@ -665,20 +665,18 @@ function renderDrill(mode, qid) {
     btn.classList.add("chosen");
     try {
       await logPractice(state.user.uid, { questionId: qid, mode: "drill", rating: n, durationSec: 0 });
+      feedbackEl.textContent = `saved · ${n}/5`;
+      feedbackEl.classList.add("saved");
     } catch (err) {
       console.error(err);
       alert("Could not save rating: " + err.message);
-      return;
     }
-    // show repeat + next (no back-home button — use the × top-right)
-    postRating.hidden = false;
-    postRating.innerHTML = "";
-    postRating.appendChild(el("p", { class: "muted", text: `saved · ${n}/5` }));
-    postRating.appendChild(el("div", { class: "row stretch" }, [
-      el("button", { class: "btn secondary", onClick: flipToFront }, ["repeat"]),
-      el("button", { class: "btn", onClick: advanceDrill }, ["next"])
-    ]));
   }
+
+  const actions = el("div", { class: "drill-actions" }, [
+    el("button", { class: "btn secondary", onClick: flipToFront }, ["repeat"]),
+    el("button", { class: "btn", onClick: advanceDrill }, ["next"])
+  ]);
 
   const queueIndicator = drillQueue.list.length
     ? el("div", { class: "queue-indicator", text: `${drillQueue.label} · ${drillQueue.idx + 1} / ${drillQueue.list.length}` })
@@ -689,7 +687,8 @@ function renderDrill(mode, qid) {
       closeBtn,
       queueIndicator,
       flipcard,
-      el("div", { class: "flip-hint", text: "tap reveal to flip · × to close" })
+      actions,
+      feedbackEl
     ].filter(Boolean))
   );
 }
