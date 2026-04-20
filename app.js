@@ -463,12 +463,14 @@ function renderHome() {
   ]);
 
   mount(
-    el("div", { style: { margin: "4px 0 18px" } }, [
-      el("span", { class: "soft", text: "rehearse " }),
-      el("span", { class: "hard", text: "your voice." })
+    el("div", { class: "home-tagline" }, [
+      el("div", {}, [
+        el("span", { class: "soft", text: "rehearse " }),
+        el("span", { class: "hard", text: "your voice." })
+      ]),
+      el("button", { class: "btn ghost small", onClick: () => go("history") }, ["history \u2192"])
     ]),
     hero,
-    el("h2", { text: "Pick something to do" }),
     tiles
   );
 }
@@ -598,7 +600,7 @@ function renderDetail(qid) {
       const t = l.ts?.toDate?.();
       const when = t ? t.toLocaleString() : "—";
       return el("div", { class: "log-row" }, [
-        el("span", { class: "log-mode", text: l.mode }),
+        el("span", { class: "log-mode", text: modeLabel(l.mode) }),
         el("span", { text: `rated ${l.rating}/5` }),
         el("span", { class: "muted", text: when })
       ]);
@@ -664,6 +666,9 @@ function renderDrill(mode, qid) {
 
   const feedbackEl = el("div", { class: "drill-feedback", text: "" });
 
+  const repeatBtnEl = el("button", { class: "btn secondary", onClick: () => flipToFront() }, ["repeat"]);
+  const nextBtnEl = el("button", { class: "btn", disabled: true, onClick: advanceDrill }, ["next"]);
+
   function flipToBack() {
     flipcard.classList.add("flipped");
   }
@@ -672,6 +677,7 @@ function renderDrill(mode, qid) {
     ratingRow.querySelectorAll("button").forEach((b) => b.classList.remove("chosen"));
     feedbackEl.textContent = "";
     feedbackEl.classList.remove("saved");
+    nextBtnEl.setAttribute("disabled", "");
   }
 
   async function handleRate(n, btn) {
@@ -681,16 +687,14 @@ function renderDrill(mode, qid) {
       await logPractice(state.user.uid, { questionId: qid, mode: "drill", rating: n, durationSec: 0 });
       feedbackEl.textContent = `saved · ${n}/5`;
       feedbackEl.classList.add("saved");
+      nextBtnEl.removeAttribute("disabled");
     } catch (err) {
       console.error(err);
       alert("Could not save rating: " + err.message);
     }
   }
 
-  const actions = el("div", { class: "drill-actions" }, [
-    el("button", { class: "btn secondary", onClick: flipToFront }, ["repeat"]),
-    el("button", { class: "btn", onClick: advanceDrill }, ["next"])
-  ]);
+  const actions = el("div", { class: "drill-actions" }, [repeatBtnEl, nextBtnEl]);
 
   const queueIndicator = drillQueue.list.length
     ? el("div", { class: "queue-indicator", text: `${drillQueue.label} · ${drillQueue.idx + 1} / ${drillQueue.list.length}` })
@@ -715,6 +719,10 @@ function pickRandomAndGoDrill() {
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+function modeLabel(mode) {
+  return mode === "mock" ? "live" : mode;
 }
 
 // ---------- mock mode ----------
@@ -945,7 +953,7 @@ function renderHistory() {
     nodes.push(el("div", { class: "card" }, logs.map((l) => {
       const q = state.questionsById[l.questionId];
       return el("div", { class: "log-row" }, [
-        el("span", { class: "log-mode", text: l.mode }),
+        el("span", { class: "log-mode", text: modeLabel(l.mode) }),
         el("span", { text: q?.title || l.questionId, style: { flex: "1", overflow: "hidden", textOverflow: "ellipsis" } }),
         el("span", { text: `${l.rating}/5`, class: "qmeta" })
       ]);

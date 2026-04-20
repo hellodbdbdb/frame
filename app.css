@@ -611,44 +611,43 @@ details[open] summary { margin-bottom: 8px; color: var(--fg); }
 .hero-readiness {
   background: var(--accent-deep);
   color: #ece9e2;
-  border-radius: var(--radius-xl);
-  padding: 28px 24px;
-  margin-bottom: 12px;
+  border-radius: var(--radius-lg);
+  padding: 14px 18px;
+  margin-bottom: 10px;
   position: relative;
   overflow: hidden;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
 }
 .hero-readiness .score {
   font-family: var(--font-display);
-  font-size: 88px;
+  font-size: 44px;
   font-weight: 800;
-  letter-spacing: -0.06em;
-  line-height: 0.95;
-  margin: 8px 0 4px;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  margin: 0;
+  flex-shrink: 0;
 }
-.hero-readiness .score .slash { color: rgba(236, 233, 226, 0.4); font-weight: 500; }
+.hero-readiness .score .slash { color: rgba(236, 233, 226, 0.4); font-weight: 500; font-size: 0.6em; }
 .hero-readiness .score-label {
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: rgba(236, 233, 226, 0.6);
+  color: rgba(236, 233, 226, 0.55);
+  align-self: center;
 }
 .hero-readiness .score-caption {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 500;
-  color: rgba(236, 233, 226, 0.75);
-  max-width: 360px;
-  margin-top: 4px;
+  color: rgba(236, 233, 226, 0.7);
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  align-self: center;
 }
-.hero-readiness .wordmark-hero {
-  position: absolute;
-  right: 20px;
-  bottom: 16px;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: rgba(236, 233, 226, 0.45);
-}
+.hero-readiness .wordmark-hero { display: none; }
 
 /* ── mock ──────────────────────────────────────── */
 .mock-question-list { counter-reset: mock; padding: 0; list-style: none; }
@@ -811,6 +810,15 @@ details[open] summary { margin-bottom: 8px; color: var(--fg); }
   border-radius: var(--radius-pill);
   margin-bottom: 10px;
   letter-spacing: -0.01em;
+}
+
+/* ── home tagline row ────────────────────────── */
+.home-tagline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 0 10px;
 }
 
 /* ── detail-nav (library prev/next) ─────────── */
