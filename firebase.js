@@ -109,7 +109,7 @@ function sessionsCol(uid) {
 
 // ---------- seeding ----------
 
-const SEED_VERSION = 1;
+const SEED_VERSION = 2;
 
 export async function ensureSeed(user) {
   const uref = userDoc(user.uid);
@@ -125,25 +125,38 @@ export async function ensureSeed(user) {
   }
 
   const profile = (await getDoc(uref)).data() || {};
+  const current = profile.seedVersion || 0;
+  if (current >= SEED_VERSION) return;
 
-  if ((profile.seedVersion || 0) >= SEED_VERSION) return;
-
-  // First-time seed: write all 26 question entries in a batch.
   const batch = writeBatch(db);
-  for (const q of SEED_QUESTIONS) {
-    batch.set(questionDoc(user.uid, q.id), {
-      order: q.order,
-      theme: q.theme,
-      type: q.type,
-      title: q.title,
-      prompt: q.prompt,
-      answer: q.answer,
-      anchor: q.anchor,
-      beats: q.beats || [],
-      baseline: q.baseline || 3,
-      lastEditedAt: serverTimestamp()
-    });
+
+  if (current < 1) {
+    // First-time seed: write all question entries in full.
+    for (const q of SEED_QUESTIONS) {
+      batch.set(questionDoc(user.uid, q.id), {
+        order: q.order,
+        theme: q.theme,
+        type: q.type,
+        title: q.title,
+        prompt: q.prompt,
+        answer: q.answer,
+        anchor: q.anchor,
+        beats: q.beats || [],
+        baseline: q.baseline || 3,
+        lastEditedAt: serverTimestamp()
+      });
+    }
+  } else if (current < 2) {
+    // v2 migration: refresh anchor + beats from data.js (answers, ratings, etc. untouched).
+    for (const q of SEED_QUESTIONS) {
+      batch.set(questionDoc(user.uid, q.id), {
+        anchor: q.anchor,
+        beats: q.beats || [],
+        lastEditedAt: serverTimestamp()
+      }, { merge: true });
+    }
   }
+
   batch.set(uref, { seedVersion: SEED_VERSION }, { merge: true });
   await batch.commit();
 }
