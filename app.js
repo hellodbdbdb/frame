@@ -432,11 +432,11 @@ function renderHome() {
     tile({
       variant: "dark",
       kicker: "focus",
-      title: "Weak spots",
+      title: "Improve",
       copy: `${weak.length} questions picked by low strength × high staleness`,
       cta: "Start drill",
-      letter: "w",
-      onClick: () => startDrillPool("Weak spots", weak.map((q) => q.id))
+      letter: "i",
+      onClick: () => startDrillPool("Improve", weak.map((q) => q.id))
     }),
     tile({
       variant: "mint",
@@ -453,10 +453,10 @@ function renderHome() {
     tile({
       variant: "",
       kicker: "timed",
-      title: "Mock",
+      title: "Live",
       copy: "Cold draw, timed per question. Rate each one after.",
-      cta: "Start mock",
-      letter: "m",
+      cta: "Start live",
+      letter: "l",
       extraClass: "span-2",
       onClick: () => go("mock")
     })
@@ -487,8 +487,7 @@ function renderList() {
     if (!items.length) continue;
     nodes.push(el("div", { class: "theme-block" }, [
       el("div", { class: "theme-head" }, [
-        el("span", { class: "theme-name", text: name }),
-        el("span", { class: "theme-tag", text: t })
+        el("span", { class: "theme-name", text: name })
       ]),
       ...items.map((q) =>
         el("button", { class: "question-row", onClick: () => go(`detail/${q.id}`) }, [
@@ -507,7 +506,7 @@ function renderSet(kind) {
   let title = "";
   if (kind === "weak") {
     list = weakSpots(3);
-    title = "Weak spots";
+    title = "Improve";
   } else if (kind === "cold") {
     list = [...state.questions].sort(() => Math.random() - 0.5).slice(0, 10);
     title = "Cold run · 10 random";
@@ -534,14 +533,32 @@ function renderDetail(qid) {
   if (!q) { go("list"); return; }
   const logs = state.logs.filter((l) => l.questionId === qid).slice(0, 10);
 
+  // library-ordered flat list for prev/next nav
+  const order = [];
+  for (const t of Object.keys(THEMES)) {
+    for (const x of state.questions) if (x.theme === t) order.push(x);
+  }
+  const idx = order.findIndex((x) => x.id === qid);
+  const prevQ = idx > 0 ? order[idx - 1] : null;
+  const nextQ = idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null;
+
+  const nav = el("div", { class: "detail-nav" }, [
+    el("button", {
+      class: "btn ghost small",
+      disabled: !prevQ,
+      onClick: () => prevQ && go(`detail/${prevQ.id}`)
+    }, ["\u2190 prev"]),
+    el("span", { class: "detail-nav-count", text: `${idx + 1} / ${order.length}` }),
+    el("button", {
+      class: "btn ghost small",
+      disabled: !nextQ,
+      onClick: () => nextQ && go(`detail/${nextQ.id}`)
+    }, ["next \u2192"])
+  ]);
+
   const nodes = [
+    nav,
     el("h1", { text: q.title }),
-    el("div", { class: "row" }, [
-      el("span", { class: "pill framework", text: q.type }),
-      el("span", { class: "pill", text: THEMES[q.theme]?.name }),
-      el("span", { class: "pill", text: `strength ${strengthFor(q.id).toFixed(1)}` }),
-      el("span", { class: "pill", text: stalenessLabel(q.id) })
-    ]),
     el("div", { class: "card" }, [
       el("h3", { text: "Question" }),
       el("p", { text: q.prompt })
@@ -602,14 +619,11 @@ function renderDrill(mode, qid) {
   }}, ["\u00d7"]);
 
   const flipcard = el("div", { class: "flipcard" });
+  flipcard.appendChild(closeBtn);
   const inner = el("div", { class: "flipcard-inner" });
 
   // --- front: the question ---
   const front = el("div", { class: "flipcard-face card" }, [
-    el("div", { class: "row" }, [
-      el("span", { class: "pill", text: THEMES[q.theme]?.name }),
-      el("span", { class: "pill", text: q.type })
-    ]),
     el("div", { class: "drill-prompt", text: q.prompt }),
     el("button", { class: "btn block", onClick: flipToBack }, ["reveal answer"])
   ]);
@@ -684,7 +698,6 @@ function renderDrill(mode, qid) {
 
   mount(
     el("div", { class: "drill-view" }, [
-      closeBtn,
       queueIndicator,
       flipcard,
       actions,
@@ -739,7 +752,7 @@ function renderMockIntro() {
   });
 
   mount(
-    el("h1", { text: "Cold mock" }),
+    el("h1", { text: "Live" }),
     el("p", { class: "muted", text: "Random draw, timed, no pauses. Rate each one after." }),
     el("div", { class: "card" }, [
       el("h3", { text: "How many?" }),
@@ -750,7 +763,7 @@ function renderMockIntro() {
       ...themeBoxes
     ]),
     el("button", { class: "btn block", onClick: startMock }, [
-      el("span", { text: "start mock" }),
+      el("span", { text: "start live" }),
       el("span", { class: "arrow", "aria-hidden": "true", text: "\u2192" })
     ])
   );
@@ -804,16 +817,15 @@ function renderMockRun() {
   }
 
   mount(
-    el("div", { class: "row" }, [
-      el("span", { class: "pill", text: `${mockState.idx + 1} / ${mockState.queue.length}` }),
-      el("span", { class: "pill", text: THEMES[q.theme]?.name })
+    el("div", { class: "qmeta", style: { margin: "6px 0" } }, [
+      document.createTextNode(`${mockState.idx + 1} / ${mockState.queue.length}`)
     ]),
     timerEl,
     promptEl,
     anchorDetail,
     nextBtn,
     el("button", { class: "btn ghost", style: { marginTop: "8px" }, onClick: () => {
-      if (confirm("End mock and rate?")) { if (mockState.tickerId) clearInterval(mockState.tickerId); go("mock-rate"); }
+      if (confirm("End live and rate?")) { if (mockState.tickerId) clearInterval(mockState.tickerId); go("mock-rate"); }
     }}, ["end early"])
   );
 
@@ -890,9 +902,8 @@ function renderMockRate() {
     ]);
 
     return el("div", { class: "card mock-rate-card" }, [
-      el("div", { class: "row" }, [
-        el("span", { class: "qmeta", text: `${idx + 1} / ${mockState.queue.length}` }),
-        el("span", { class: "pill", text: THEMES[q.theme]?.name })
+      el("div", { class: "qmeta" }, [
+        document.createTextNode(`${idx + 1} / ${mockState.queue.length}`)
       ]),
       el("div", { class: "qtitle", text: q.title }),
       el("p", { class: "qprompt", text: q.prompt }),
@@ -902,7 +913,7 @@ function renderMockRate() {
   });
 
   mount(
-    el("h1", { text: "Rate the mock" }),
+    el("h1", { text: "Rate the live run" }),
     el("p", { class: "muted", text: "1 = fumbled · 5 = clean. Open the answer while rating if it helps." }),
     ...cards,
     el("button", { class: "btn block", style: { marginTop: "16px" }, onClick: saveAll }, ["save + finish"])
