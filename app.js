@@ -399,8 +399,6 @@ function renderHome() {
   const r = readiness();
   const reps = repsThisWeek();
   const weak = weakSpots(3);
-  const neg = neglectedTheme();
-  const negName = THEMES[neg]?.name || neg;
 
   // --- hero readiness card (dark emerald) ---
   const hero = el("section", { class: "hero-readiness" }, [
@@ -411,8 +409,10 @@ function renderHome() {
   ]);
 
   // --- tile factory ---
-  function tile({ variant, kicker, title, copy, cta, letter, onClick }) {
-    const cls = "action-card" + (variant ? " " + variant : "");
+  function tile({ variant, kicker, title, copy, cta, letter, extraClass, onClick }) {
+    const cls = "action-card"
+      + (variant ? " " + variant : "")
+      + (extraClass ? " " + extraClass : "");
     return el("button", { class: cls, onClick }, [
       letter ? el("span", { class: "bg-letter", text: letter, "aria-hidden": "true" }) : null,
       el("div", {}, [
@@ -441,35 +441,24 @@ function renderHome() {
     tile({
       variant: "mint",
       kicker: "breadth",
-      title: "Cold run",
+      title: "Random",
       copy: "10 random questions across every theme, drilled in sequence",
       cta: "Start run",
-      letter: "c",
+      letter: "r",
       onClick: () => {
         const qids = [...state.questions].sort(() => Math.random() - 0.5).slice(0, 10).map((q) => q.id);
-        startDrillPool("Cold run", qids);
+        startDrillPool("Random", qids);
       }
     }),
     tile({
       variant: "",
-      kicker: "rotation",
-      title: "Neglected theme",
-      copy: `${negName} — it has been waiting the longest`,
-      cta: "Visit theme",
-      letter: neg,
-      onClick: () => {
-        const qids = state.questions.filter((q) => q.theme === neg).map((q) => q.id);
-        startDrillPool(`Neglected · ${negName}`, qids);
-      }
-    }),
-    tile({
-      variant: "",
-      kicker: "loose",
-      title: "Random drill",
-      copy: "One question pulled at random as a flipcard",
-      cta: "Flip a card",
-      letter: "?",
-      onClick: pickRandomAndGoDrill
+      kicker: "timed",
+      title: "Mock",
+      copy: "Cold draw, timed per question. Rate each one after.",
+      cta: "Start mock",
+      letter: "m",
+      extraClass: "span-2",
+      onClick: () => go("mock")
     })
   ]);
 
