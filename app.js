@@ -566,18 +566,12 @@ function renderDetail(qid) {
       el("p", { text: q.prompt })
     ]),
     buildAnchorCard(q, qid),
+    buildBeatsCard(q, qid),
     el("div", { class: "card" }, [
       el("h3", { text: "Your answer" }),
       el("div", { class: "answer-body", html: mdToHtml(q.answer) })
     ])
   ];
-
-  if (q.type === "story" && q.beats?.length) {
-    nodes.push(el("div", { class: "card" }, [
-      el("h3", { text: "Story beats" }),
-      el("ol", {}, q.beats.map((b) => el("li", { text: b })))
-    ]));
-  }
 
   nodes.push(el("h2", { text: "Practice" }));
   nodes.push(el("div", { class: "row stretch" }, [
@@ -755,6 +749,57 @@ function buildAnchorCard(q, qid) {
       }
     }}, ["save"]);
     card.appendChild(el("h3", { text: "Anchor phrase" }));
+    card.appendChild(ta);
+    card.appendChild(el("div", { class: "row", style: { marginTop: "10px", gap: "8px" } }, [
+      saveBtn,
+      el("button", { class: "btn ghost small", onClick: showView }, ["cancel"])
+    ]));
+    ta.focus();
+  }
+
+  showView();
+  return card;
+}
+
+function buildBeatsCard(q, qid) {
+  const card = el("div", { class: "card anchor-card" }, []);
+
+  function showView() {
+    card.innerHTML = "";
+    card.appendChild(el("div", { class: "anchor-head" }, [
+      el("h3", { text: "Story beats" }),
+      el("button", { class: "btn ghost small", onClick: showEdit }, ["edit"])
+    ]));
+    const beats = q.beats || [];
+    if (beats.length) {
+      const ol = document.createElement("ol");
+      ol.style.paddingLeft = "20px";
+      ol.style.margin = "6px 0 0";
+      for (const b of beats) ol.appendChild(el("li", { text: b }));
+      card.appendChild(ol);
+    } else {
+      card.appendChild(el("p", { class: "muted", text: "No beats yet. Tap edit to add.", style: { margin: "6px 0 0" } }));
+    }
+  }
+
+  function showEdit() {
+    card.innerHTML = "";
+    const ta = el("textarea", { class: "compact" }, [(q.beats || []).join("\n")]);
+    const saveBtn = el("button", { class: "btn small", onClick: async () => {
+      const next = ta.value.split("\n").map((s) => s.trim()).filter(Boolean);
+      saveBtn.setAttribute("disabled", "");
+      try {
+        await saveQuestion(state.user.uid, qid, { beats: next });
+        q.beats = next;
+        if (state.questionsById[qid]) state.questionsById[qid].beats = next;
+        showView();
+      } catch (err) {
+        saveBtn.removeAttribute("disabled");
+        alert("Could not save: " + (err?.message || err));
+      }
+    }}, ["save"]);
+    card.appendChild(el("h3", { text: "Story beats" }));
+    card.appendChild(el("p", { class: "muted", text: "One beat per line.", style: { margin: "2px 0 8px" } }));
     card.appendChild(ta);
     card.appendChild(el("div", { class: "row", style: { marginTop: "10px", gap: "8px" } }, [
       saveBtn,
