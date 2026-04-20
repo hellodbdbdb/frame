@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f7f5f0" />
+  <title>frame — rehearse your voice</title>
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <link rel="stylesheet" href="./app.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar" hidden>
+      <button class="brand" data-nav="home">frame</button>
+      <div class="spacer"></div>
+      <span class="readiness" id="readinessChip" title="Readiness 0-100"></span>
+      <button class="iconbtn" id="signoutBtn" title="Sign out" hidden>exit</button>
+    </header>
+
+    <main id="view"></main>
+
+    <nav class="bottombar" id="bottombar" hidden>
+      <button data-nav="home">home</button>
+      <button data-nav="drill">drill</button>
+      <button data-nav="mock">mock</button>
+      <button data-nav="list">library</button>
+      <button data-nav="history">history</button>
+    </nav>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

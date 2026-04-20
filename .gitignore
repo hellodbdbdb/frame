@@ -1,0 +1,11 @@
+# real firebase config — never commit
+firebase-config.js
+
+# os + editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# nothing else to build — this is a zero-dep static app
+node_modules/

@@ -1,0 +1,999 @@
+// app.js — frame main logic
+// Vanilla ES module, hash router, minimal state. Firestore is source of truth.
+
+import {
+  onAuth,
+  signIn,
+  signOut,
+  handleRedirect,
+  ensureSeed,
+  loadQuestions,
+  saveQuestion,
+  logPractice,
+  loadLogs,
+  startSession,
+  endSession,
+  loadSessions
+} from "./firebase.js";
+
+import { THEMES } from "./data.js";
+
+// ---------- state ----------
+
+const state = {
+  user: null,
+  questions: [],      // full array from firestore
+  questionsById: {},
+  logs: [],           // recent logs
+  sessions: [],
+  loaded: false,
+  route: "home"
+};
+
+// Drill queue — used when you enter drill from a home action card (weak spots,
+// cold run, neglected theme). "next" then steps through this list instead of
+// picking a fresh random.
+const drillQueue = {
+  list: [],   // array of qids
+  idx: 0,
+  label: ""   // e.g. "Weak spots"
+};
+
+function clearDrillQueue() {
+  drillQueue.list = [];
+  drillQueue.idx = 0;
+  drillQueue.label = "";
+}
+
+function startDrillPool(label, qids) {
+  if (!qids.length) { alert("No questions in this pool yet."); return; }
+  drillQueue.list = qids;
+  drillQueue.idx = 0;
+  drillQueue.label = label;
+  go(`drill/${qids[0]}`);
+}
+
+function advanceDrill() {
+  if (!drillQueue.list.length) {
+    pickRandomAndGoDrill();
+    return;
+  }
+  drillQueue.idx++;
+  if (drillQueue.idx >= drillQueue.list.length) {
+    clearDrillQueue();
+    go("home");
+    return;
+  }
+  go(`drill/${drillQueue.list[drillQueue.idx]}`);
+}
+
+// ---------- bootstrap ----------
+
+window.addEventListener("DOMContentLoaded", () => {
+  handleRedirect(); // resolves any pending redirect sign-in
+  wireTopbar();
+  wireBottombar();
+  window.addEventListener("hashchange", renderRoute);
+  onAuth(onAuthChange);
+});
+
+function wireTopbar() {
+  document.querySelector(".brand")?.addEventListener("click", () => go("home"));
+  document.getElementById("signoutBtn")?.addEventListener("click", async () => {
+    await signOut();
+    state.user = null;
+    state.loaded = false;
+    state.questions = [];
+    state.logs = [];
+    state.sessions = [];
+    hideChrome();
+    renderSignin();
+  });
+}
+
+function wireBottombar() {
+  const bar = document.getElementById("bottombar");
+  if (!bar) return;
+  bar.querySelectorAll("button[data-nav]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.dataset.nav === "drill") {
+        pickRandomAndGoDrill();
+      } else {
+        go(btn.dataset.nav);
+      }
+    });
+  });
+}
+
+function showChrome() {
+  document.querySelector(".topbar").hidden = false;
+  document.getElementById("bottombar").hidden = false;
+  document.getElementById("signoutBtn").hidden = false;
+}
+
+function hideChrome() {
+  document.querySelector(".topbar").hidden = true;
+  document.getElementById("bottombar").hidden = true;
+  document.getElementById("signoutBtn").hidden = true;
+}
+
+async function onAuthChange(user) {
+  if (!user) {
+    state.user = null;
+    state.loaded = false;
+    hideChrome();
+    renderSignin();
+    return;
+  }
+  state.user = user;
+  showChrome();
+  renderLoading();
+  try {
+    await ensureSeed(user);
+    await refreshData();
+    state.loaded = true;
+    renderRoute();
+  } catch (err) {
+    console.error(err);
+    renderError(err);
+  }
+}
+
+async function refreshData() {
+  const [questions, logs, sessions] = await Promise.all([
+    loadQuestions(state.user.uid),
+    loadLogs(state.user.uid, 500),
+    loadSessions(state.user.uid, 30)
+  ]);
+  state.questions = questions;
+  state.questionsById = Object.fromEntries(questions.map((q) => [q.id, q]));
+  state.logs = logs;
+  state.sessions = sessions;
+  updateReadinessChip();
+}
+
+// ---------- routing ----------
+
+function go(route) {
+  location.hash = "#" + route;
+}
+
+function currentHash() {
+  return (location.hash || "#home").slice(1);
+}
+
+function renderRoute() {
+  if (!state.user) { renderSignin(); return; }
+  if (!state.loaded) { renderLoading(); return; }
+
+  const h = currentHash();
+  const [name, ...rest] = h.split("/");
+  state.route = name;
+
+  setActiveNav(name);
+
+  switch (name) {
+    case "home":    renderHome(); break;
+    case "list":    renderList(); break;
+    case "detail":  renderDetail(rest[0]); break;
+    case "drill":
+      if (rest[0]) renderDrill("drill", rest[0]);
+      else pickRandomAndGoDrill();
+      break;
+    case "anchor":  renderDrill("drill", rest[0]); break;
+    case "structure": renderDrill("drill", rest[0]); break;
+    case "story":   renderDrill("drill", rest[0]); break;
+    case "mock":    renderMockIntro(); break;
+    case "mock-run": renderMockRun(); break;
+    case "mock-rate": renderMockRate(); break;
+    case "history": renderHistory(); break;
+    case "edit":    renderEdit(rest[0]); break;
+    case "weak":    renderSet("weak"); break;
+    case "cold":    renderSet("cold"); break;
+    case "neglected": renderSet("neglected"); break;
+    case "browse":  renderList(); break;
+    default: renderHome();
+  }
+}
+
+function setActiveNav(name) {
+  const map = {
+    home: "home",
+    list: "list",
+    mock: "mock",
+    "mock-run": "mock",
+    "mock-rate": "mock",
+    history: "history",
+    drill: "drill",
+    detail: "list",
+    edit: "list",
+    weak: "list",
+    cold: "list",
+    neglected: "list",
+    browse: "list"
+  };
+  const active = map[name] || "home";
+  document.querySelectorAll("#bottombar button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.nav === active);
+  });
+}
+
+// ---------- strength + readiness ----------
+
+// Strength: take most recent N=5 logs for a question, EWMA with decay 0.7.
+// If no logs, fall back to baseline from seed.
+function strengthFor(qid) {
+  const recent = state.logs
+    .filter((l) => l.questionId === qid)
+    .slice(0, 5); // already desc by ts
+  if (!recent.length) return state.questionsById[qid]?.baseline ?? 3;
+  let num = 0;
+  let den = 0;
+  let w = 1;
+  for (const l of recent) {
+    num += (l.rating || 3) * w;
+    den += w;
+    w *= 0.7;
+  }
+  return Math.max(1, Math.min(5, num / den));
+}
+
+function lastPracticed(qid) {
+  const l = state.logs.find((x) => x.questionId === qid);
+  return l?.ts?.toDate?.() || null;
+}
+
+function stalenessDays(qid) {
+  const d = lastPracticed(qid);
+  if (!d) return 999;
+  return Math.floor((Date.now() - d.getTime()) / 86400000);
+}
+
+// Readiness: mean strength (normalized 0-1) minus staleness penalty.
+function readiness() {
+  if (!state.questions.length) return 0;
+  const strengths = state.questions.map((q) => strengthFor(q.id));
+  const mean = strengths.reduce((a, b) => a + b, 0) / strengths.length;
+  const strengthNorm = (mean - 1) / 4; // 0..1
+
+  // coverage: share of questions practiced in last 7 days
+  const recentCount = state.questions.filter((q) => stalenessDays(q.id) <= 7).length;
+  const coverage = recentCount / state.questions.length;
+
+  // composite: 70% strength, 30% coverage
+  const composite = 0.7 * strengthNorm + 0.3 * coverage;
+  return Math.round(composite * 100);
+}
+
+function updateReadinessChip() {
+  const chip = document.getElementById("readinessChip");
+  if (chip) chip.textContent = `ready ${readiness()}/100`;
+}
+
+function themeLastPracticed(theme) {
+  const qids = state.questions.filter((q) => q.theme === theme).map((q) => q.id);
+  const dates = qids.map((id) => lastPracticed(id)).filter(Boolean);
+  if (!dates.length) return null;
+  return new Date(Math.max(...dates.map((d) => d.getTime())));
+}
+
+function neglectedTheme() {
+  const scored = Object.keys(THEMES).map((t) => {
+    const d = themeLastPracticed(t);
+    return { theme: t, last: d ? d.getTime() : 0 };
+  });
+  scored.sort((a, b) => a.last - b.last);
+  return scored[0].theme;
+}
+
+function weakSpots(n = 3) {
+  const scored = state.questions.map((q) => ({
+    q,
+    score: (5 - strengthFor(q.id)) * 1 + Math.min(stalenessDays(q.id), 30) / 30
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, n).map((s) => s.q);
+}
+
+function repsThisWeek() {
+  const cutoff = Date.now() - 7 * 86400000;
+  return state.logs.filter((l) => {
+    const t = l.ts?.toDate?.();
+    return t && t.getTime() >= cutoff;
+  }).length;
+}
+
+// ---------- view helpers ----------
+
+const $view = () => document.getElementById("view");
+
+function el(tag, props = {}, children = []) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") n.className = v;
+    else if (k === "html") n.innerHTML = v;
+    else if (k === "text") n.textContent = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k === "style" && typeof v === "object") Object.assign(n.style, v);
+    else if (v === true) n.setAttribute(k, "");
+    else if (v !== false && v != null) n.setAttribute(k, v);
+  }
+  for (const c of [].concat(children)) {
+    if (c == null || c === false) continue;
+    n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+  }
+  return n;
+}
+
+function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+function mount(...nodes) {
+  const v = $view();
+  clear(v);
+  for (const n of nodes) v.appendChild(n);
+  window.scrollTo(0, 0);
+}
+
+function strengthDot(s) {
+  const n = Math.max(1, Math.min(5, Math.round(s)));
+  return el("span", { class: `strength-dot s${n}`, title: `strength ${s.toFixed(1)}/5` });
+}
+
+function stalenessLabel(qid) {
+  const d = stalenessDays(qid);
+  if (d >= 999) return "never";
+  if (d === 0) return "today";
+  if (d === 1) return "1d ago";
+  return d + "d ago";
+}
+
+function mdToHtml(md) {
+  if (!md) return "";
+  const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const lines = md.split("\n");
+  let out = "";
+  let inList = false;
+  for (const line of lines) {
+    if (/^\s*-\s+/.test(line)) {
+      if (!inList) { out += "<ul>"; inList = true; }
+      out += "<li>" + esc(line.replace(/^\s*-\s+/, "")) + "</li>";
+    } else {
+      if (inList) { out += "</ul>"; inList = false; }
+      if (line.trim()) out += "<p>" + esc(line) + "</p>";
+    }
+  }
+  if (inList) out += "</ul>";
+  return out;
+}
+
+// ---------- views ----------
+
+function renderSignin() {
+  mount(
+    el("section", { class: "signin" }, [
+      el("h1", { text: "frame" }),
+      el("p", { class: "tagline", text: "A quiet place to rehearse your voice. No streaks. No noise. Just you and the questions." }),
+      el("button", { class: "btn", onClick: () => signIn().catch((e) => alert(e.message)) }, [
+        el("span", { text: "sign in with Google" }),
+        el("span", { class: "arrow", "aria-hidden": "true", text: "\u2192" })
+      ])
+    ])
+  );
+}
+
+function renderLoading() {
+  mount(el("section", { class: "empty" }, [el("p", { text: "loading…" })]));
+}
+
+function renderError(err) {
+  mount(
+    el("section", { class: "card" }, [
+      el("h2", { text: "Something went wrong." }),
+      el("p", { class: "muted", text: String(err?.message || err) }),
+      el("button", { class: "btn secondary", onClick: () => location.reload() }, ["reload"])
+    ])
+  );
+}
+
+function renderHome() {
+  const r = readiness();
+  const reps = repsThisWeek();
+  const weak = weakSpots(3);
+  const neg = neglectedTheme();
+  const negName = THEMES[neg]?.name || neg;
+
+  // --- hero readiness card (dark emerald) ---
+  const hero = el("section", { class: "hero-readiness" }, [
+    el("div", { class: "score-label", text: "Readiness" }),
+    el("div", { class: "score", html: `${r}<span class="slash">/100</span>` }),
+    el("p", { class: "score-caption", text: `${reps} reps this week · ${state.questions.length} questions in the library` }),
+    el("span", { class: "wordmark-hero", text: "/frame" })
+  ]);
+
+  // --- tile factory ---
+  function tile({ variant, kicker, title, copy, cta, letter, onClick }) {
+    const cls = "action-card" + (variant ? " " + variant : "");
+    return el("button", { class: cls, onClick }, [
+      letter ? el("span", { class: "bg-letter", text: letter, "aria-hidden": "true" }) : null,
+      el("div", {}, [
+        el("div", { class: "kicker", text: kicker }),
+        el("h3", { text: title }),
+        el("p", { text: copy })
+      ]),
+      el("div", { class: "card-cta" }, [
+        el("span", { text: cta }),
+        el("span", { class: "arrow", "aria-hidden": "true", text: "\u2192" })
+      ]),
+      el("span", { class: "wordmark", text: "/frame" })
+    ].filter(Boolean));
+  }
+
+  const tiles = el("div", { class: "bento" }, [
+    tile({
+      variant: "dark",
+      kicker: "focus",
+      title: "Weak spots",
+      copy: `${weak.length} questions picked by low strength × high staleness`,
+      cta: "Start drill",
+      letter: "w",
+      onClick: () => startDrillPool("Weak spots", weak.map((q) => q.id))
+    }),
+    tile({
+      variant: "mint",
+      kicker: "breadth",
+      title: "Cold run",
+      copy: "10 random questions across every theme, drilled in sequence",
+      cta: "Start run",
+      letter: "c",
+      onClick: () => {
+        const qids = [...state.questions].sort(() => Math.random() - 0.5).slice(0, 10).map((q) => q.id);
+        startDrillPool("Cold run", qids);
+      }
+    }),
+    tile({
+      variant: "",
+      kicker: "rotation",
+      title: "Neglected theme",
+      copy: `${negName} — it has been waiting the longest`,
+      cta: "Visit theme",
+      letter: neg,
+      onClick: () => {
+        const qids = state.questions.filter((q) => q.theme === neg).map((q) => q.id);
+        startDrillPool(`Neglected · ${negName}`, qids);
+      }
+    }),
+    tile({
+      variant: "",
+      kicker: "loose",
+      title: "Random drill",
+      copy: "One question pulled at random as a flipcard",
+      cta: "Flip a card",
+      letter: "?",
+      onClick: pickRandomAndGoDrill
+    })
+  ]);
+
+  mount(
+    el("div", { style: { margin: "4px 0 18px" } }, [
+      el("span", { class: "soft", text: "rehearse " }),
+      el("span", { class: "hard", text: "your voice." })
+    ]),
+    hero,
+    el("h2", { text: "Pick something to do" }),
+    tiles
+  );
+}
+
+// pickRandomAndGoDrill is defined later in the file (after renderDrill)
+// and used both from the bottombar and from home action cards.
+
+function renderList() {
+  const grouped = {};
+  for (const q of state.questions) {
+    (grouped[q.theme] ||= []).push(q);
+  }
+  const nodes = [el("h1", { text: "library" })];
+  for (const [t, name] of Object.entries(THEMES).map(([k, v]) => [k, v.name])) {
+    const items = grouped[t] || [];
+    if (!items.length) continue;
+    nodes.push(el("div", { class: "theme-block" }, [
+      el("div", { class: "theme-head" }, [
+        el("span", { class: "theme-name", text: name }),
+        el("span", { class: "theme-tag", text: t })
+      ]),
+      ...items.map((q) =>
+        el("button", { class: "question-row", onClick: () => go(`detail/${q.id}`) }, [
+          strengthDot(strengthFor(q.id)),
+          el("span", { class: "qtitle", text: q.title }),
+          el("span", { class: "qmeta", text: stalenessLabel(q.id) })
+        ])
+      )
+    ]));
+  }
+  mount(...nodes);
+}
+
+function renderSet(kind) {
+  let list = [];
+  let title = "";
+  if (kind === "weak") {
+    list = weakSpots(3);
+    title = "Weak spots";
+  } else if (kind === "cold") {
+    list = [...state.questions].sort(() => Math.random() - 0.5).slice(0, 10);
+    title = "Cold run · 10 random";
+  } else {
+    const theme = neglectedTheme();
+    list = state.questions.filter((q) => q.theme === theme);
+    title = `Neglected · ${THEMES[theme]?.name}`;
+  }
+  mount(
+    el("h1", { text: title }),
+    el("p", { class: "muted", text: "Tap a question to drill or browse." }),
+    ...list.map((q) =>
+      el("button", { class: "question-row", onClick: () => go(`detail/${q.id}`) }, [
+        strengthDot(strengthFor(q.id)),
+        el("span", { class: "qtitle", text: q.title }),
+        el("span", { class: "qmeta", text: stalenessLabel(q.id) })
+      ])
+    )
+  );
+}
+
+function renderDetail(qid) {
+  const q = state.questionsById[qid];
+  if (!q) { go("list"); return; }
+  const logs = state.logs.filter((l) => l.questionId === qid).slice(0, 10);
+
+  const nodes = [
+    el("h1", { text: q.title }),
+    el("div", { class: "row" }, [
+      el("span", { class: "pill framework", text: q.type }),
+      el("span", { class: "pill", text: THEMES[q.theme]?.name }),
+      el("span", { class: "pill", text: `strength ${strengthFor(q.id).toFixed(1)}` }),
+      el("span", { class: "pill", text: stalenessLabel(q.id) })
+    ]),
+    el("div", { class: "card" }, [
+      el("h3", { text: "Question" }),
+      el("p", { text: q.prompt })
+    ]),
+    el("div", { class: "card" }, [
+      el("h3", { text: "Anchor phrase" }),
+      el("p", { class: "drill-prompt", text: q.anchor, style: { fontSize: "18px", margin: "0" } })
+    ]),
+    el("div", { class: "card" }, [
+      el("h3", { text: "Your answer" }),
+      el("div", { class: "answer-body", html: mdToHtml(q.answer) })
+    ])
+  ];
+
+  if (q.type === "story" && q.beats?.length) {
+    nodes.push(el("div", { class: "card" }, [
+      el("h3", { text: "Story beats" }),
+      el("ol", {}, q.beats.map((b) => el("li", { text: b })))
+    ]));
+  }
+
+  nodes.push(el("h2", { text: "Practice" }));
+  nodes.push(el("div", { class: "row stretch" }, [
+    el("button", { class: "btn", onClick: () => go(`drill/${qid}`) }, [
+      el("span", { text: "drill this question" }),
+      el("span", { class: "arrow", "aria-hidden": "true", text: "\u2192" })
+    ])
+  ]));
+
+  nodes.push(el("div", { class: "row", style: { marginTop: "8px" } }, [
+    el("button", { class: "btn ghost small", onClick: () => go(`edit/${qid}`) }, ["edit"])
+  ]));
+
+  if (logs.length) {
+    nodes.push(el("h2", { text: "Recent reps" }));
+    nodes.push(el("div", {}, logs.map((l) => {
+      const t = l.ts?.toDate?.();
+      const when = t ? t.toLocaleString() : "—";
+      return el("div", { class: "log-row" }, [
+        el("span", { class: "log-mode", text: l.mode }),
+        el("span", { text: `rated ${l.rating}/5` }),
+        el("span", { class: "muted", text: when })
+      ]);
+    })));
+  }
+
+  mount(...nodes);
+}
+
+function renderDrill(mode, qid) {
+  const q = state.questionsById[qid];
+  if (!q) { go("list"); return; }
+
+  const closeBtn = el("button", { class: "drill-close", "aria-label": "close", onClick: async () => {
+    clearDrillQueue();
+    await refreshData();
+    go("home");
+  }}, ["\u00d7"]);
+
+  const flipcard = el("div", { class: "flipcard" });
+  const inner = el("div", { class: "flipcard-inner" });
+
+  // --- front: the question ---
+  const front = el("div", { class: "flipcard-face card" }, [
+    el("div", { class: "row" }, [
+      el("span", { class: "pill", text: THEMES[q.theme]?.name }),
+      el("span", { class: "pill", text: q.type })
+    ]),
+    el("div", { class: "drill-prompt", text: q.prompt }),
+    el("button", { class: "btn block", onClick: flipToBack }, ["reveal answer"])
+  ]);
+
+  // --- back: question reminder + anchor + answer + (beats) + rating + post-rating ---
+  const backInner = document.createElement("div");
+  const beatsHtml = q.beats?.length
+    ? `<h3>story beats</h3><ol>${q.beats.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ol>`
+    : "";
+  backInner.innerHTML = `
+    <p class="back-question">${escapeHtml(q.prompt)}</p>
+    <h3>anchor</h3>
+    <p class="anchor-text">${escapeHtml(q.anchor || "")}</p>
+    <hr class="hair"/>
+    <h3>answer</h3>
+    <div class="answer-body">${mdToHtml(q.answer || "")}</div>
+    ${beatsHtml}
+  `;
+
+  const ratingRow = el("div", { class: "rating-row" }, [1, 2, 3, 4, 5].map((n) => {
+    const b = el("button", { class: "btn secondary", onClick: () => handleRate(n, b) }, [String(n)]);
+    return b;
+  }));
+  const ratingBox = el("div", { class: "rating-box" }, [
+    el("h3", { text: "Rate yourself" }),
+    el("p", { class: "muted", text: "1 = fumbled · 5 = clean" }),
+    ratingRow
+  ]);
+
+  const postRating = el("div", { class: "post-rating", hidden: true });
+
+  const back = el("div", { class: "flipcard-face flipcard-back card" }, [
+    backInner,
+    ratingBox,
+    postRating
+  ]);
+
+  inner.appendChild(front);
+  inner.appendChild(back);
+  flipcard.appendChild(inner);
+
+  function flipToBack() {
+    flipcard.classList.add("flipped");
+  }
+  function flipToFront() {
+    flipcard.classList.remove("flipped");
+    postRating.hidden = true;
+    ratingRow.querySelectorAll("button").forEach((b) => b.classList.remove("chosen"));
+  }
+
+  async function handleRate(n, btn) {
+    ratingRow.querySelectorAll("button").forEach((b) => b.classList.remove("chosen"));
+    btn.classList.add("chosen");
+    try {
+      await logPractice(state.user.uid, { questionId: qid, mode: "drill", rating: n, durationSec: 0 });
+    } catch (err) {
+      console.error(err);
+      alert("Could not save rating: " + err.message);
+      return;
+    }
+    // show repeat + next (no back-home button — use the × top-right)
+    postRating.hidden = false;
+    postRating.innerHTML = "";
+    postRating.appendChild(el("p", { class: "muted", text: `saved · ${n}/5` }));
+    postRating.appendChild(el("div", { class: "row stretch" }, [
+      el("button", { class: "btn secondary", onClick: flipToFront }, ["repeat"]),
+      el("button", { class: "btn", onClick: advanceDrill }, ["next"])
+    ]));
+  }
+
+  const queueIndicator = drillQueue.list.length
+    ? el("div", { class: "queue-indicator", text: `${drillQueue.label} · ${drillQueue.idx + 1} / ${drillQueue.list.length}` })
+    : null;
+
+  mount(
+    el("div", { class: "drill-view" }, [
+      closeBtn,
+      queueIndicator,
+      flipcard,
+      el("div", { class: "flip-hint", text: "tap reveal to flip · × to close" })
+    ].filter(Boolean))
+  );
+}
+
+function pickRandomAndGoDrill() {
+  clearDrillQueue();
+  const pool = state.questions;
+  const q = pool[Math.floor(Math.random() * pool.length)];
+  go(`drill/${q.id}`);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+// ---------- mock mode ----------
+
+const mockState = {
+  count: 10,
+  themes: new Set(Object.keys(THEMES)),
+  queue: [],
+  idx: 0,
+  startedAt: 0,
+  questionStartedAt: 0,
+  secondsPerQ: 60,
+  tickerId: null,
+  sessionId: null,
+  ratings: {} // qid -> rating
+};
+
+function renderMockIntro() {
+  const countSelect = el("select", { id: "mockCount" },
+    [5, 10, 15].map((n) =>
+      el("option", { value: n, selected: n === mockState.count }, [String(n)])
+    )
+  );
+  const secSelect = el("select", { id: "mockSec" },
+    [45, 60, 90].map((n) =>
+      el("option", { value: n, selected: n === mockState.secondsPerQ }, [String(n) + "s per question"])
+    )
+  );
+  const themeBoxes = Object.entries(THEMES).map(([t, v]) => {
+    const id = "th_" + t;
+    return el("label", { style: { display: "flex", gap: "8px", alignItems: "center", padding: "6px 0" } }, [
+      el("input", { type: "checkbox", id, value: t, checked: mockState.themes.has(t) }),
+      el("span", { text: `${t} · ${v.name}` })
+    ]);
+  });
+
+  mount(
+    el("h1", { text: "Cold mock" }),
+    el("p", { class: "muted", text: "Random draw, timed, no pauses. Rate each one after." }),
+    el("div", { class: "card" }, [
+      el("h3", { text: "How many?" }),
+      countSelect,
+      el("h3", { text: "Time per question" }),
+      secSelect,
+      el("h3", { text: "Themes to include" }),
+      ...themeBoxes
+    ]),
+    el("button", { class: "btn block", onClick: startMock }, [
+      el("span", { text: "start mock" }),
+      el("span", { class: "arrow", "aria-hidden": "true", text: "\u2192" })
+    ])
+  );
+}
+
+async function startMock() {
+  mockState.count = Number(document.getElementById("mockCount").value);
+  mockState.secondsPerQ = Number(document.getElementById("mockSec").value);
+  const selected = new Set();
+  document.querySelectorAll("#view input[type=checkbox]").forEach((el) => {
+    if (el.checked) selected.add(el.value);
+  });
+  mockState.themes = selected.size ? selected : new Set(Object.keys(THEMES));
+
+  const pool = state.questions.filter((q) => mockState.themes.has(q.theme));
+  if (!pool.length) { alert("No questions in those themes."); return; }
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  mockState.queue = shuffled.slice(0, mockState.count);
+  mockState.idx = 0;
+  mockState.ratings = {};
+  mockState.startedAt = Date.now();
+  mockState.sessionId = await startSession(state.user.uid, "mock", {
+    count: mockState.queue.length,
+    secondsPerQ: mockState.secondsPerQ
+  });
+  go("mock-run");
+}
+
+function renderMockRun() {
+  if (!mockState.queue.length) { go("mock"); return; }
+  const q = mockState.queue[mockState.idx];
+  mockState.questionStartedAt = Date.now();
+
+  const timerEl = el("div", { class: "timer", text: formatSecs(mockState.secondsPerQ) });
+  const promptEl = el("h1", { class: "drill-prompt", text: q.prompt });
+  const anchorDetail = el("details", {}, [
+    el("summary", { text: "peek anchor" }),
+    el("p", { text: q.anchor })
+  ]);
+
+  const nextBtn = el("button", { class: "btn block", onClick: advance }, ["next"]);
+
+  function advance() {
+    if (mockState.tickerId) { clearInterval(mockState.tickerId); mockState.tickerId = null; }
+    mockState.idx++;
+    if (mockState.idx >= mockState.queue.length) {
+      go("mock-rate");
+    } else {
+      renderMockRun();
+    }
+  }
+
+  mount(
+    el("div", { class: "row" }, [
+      el("span", { class: "pill", text: `${mockState.idx + 1} / ${mockState.queue.length}` }),
+      el("span", { class: "pill", text: THEMES[q.theme]?.name })
+    ]),
+    timerEl,
+    promptEl,
+    anchorDetail,
+    nextBtn,
+    el("button", { class: "btn ghost", style: { marginTop: "8px" }, onClick: () => {
+      if (confirm("End mock and rate?")) { if (mockState.tickerId) clearInterval(mockState.tickerId); go("mock-rate"); }
+    }}, ["end early"])
+  );
+
+  // ticker
+  const end = mockState.questionStartedAt + mockState.secondsPerQ * 1000;
+  mockState.tickerId = setInterval(() => {
+    const left = Math.ceil((end - Date.now()) / 1000);
+    timerEl.textContent = formatSecs(Math.max(0, left));
+    timerEl.classList.toggle("warning", left <= 15 && left > 5);
+    timerEl.classList.toggle("over", left <= 5);
+    if (left <= 0) {
+      clearInterval(mockState.tickerId);
+      mockState.tickerId = null;
+      advance();
+    }
+  }, 250);
+}
+
+function formatSecs(s) {
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
+}
+
+function renderMockRate() {
+  if (!mockState.queue.length) { go("mock"); return; }
+
+  const saveAll = async () => {
+    const tasks = mockState.queue
+      .map((q) => {
+        const r = mockState.ratings[q.id];
+        if (!r) return null;
+        return logPractice(state.user.uid, {
+          questionId: q.id,
+          mode: "mock",
+          rating: r,
+          durationSec: mockState.secondsPerQ,
+          sessionId: mockState.sessionId
+        });
+      })
+      .filter(Boolean);
+    await Promise.all(tasks);
+    await endSession(state.user.uid, mockState.sessionId, {
+      ratedCount: Object.keys(mockState.ratings).length
+    });
+    await refreshData();
+    go("home");
+  };
+
+  const cards = mockState.queue.map((q, idx) => {
+    const rateRow = el("div", { class: "rating-row" }, [1, 2, 3, 4, 5].map((n) => {
+      const btn = el("button", { class: "btn secondary", onClick: () => {
+        mockState.ratings[q.id] = n;
+        rateRow.querySelectorAll("button").forEach((b) => b.classList.remove("chosen"));
+        btn.classList.add("chosen");
+      }}, [String(n)]);
+      return btn;
+    }));
+
+    const beatsHtml = q.beats?.length
+      ? `<h3>beats</h3><ol>${q.beats.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ol>`
+      : "";
+
+    const detailsContent = document.createElement("div");
+    detailsContent.innerHTML = `
+      <p class="anchor-text">${escapeHtml(q.anchor || "")}</p>
+      <div class="answer-body">${mdToHtml(q.answer || "")}</div>
+      ${beatsHtml}
+    `;
+
+    const details = el("details", { open: idx === 0 }, [
+      el("summary", { text: "show anchor + answer" }),
+      detailsContent
+    ]);
+
+    return el("div", { class: "card mock-rate-card" }, [
+      el("div", { class: "row" }, [
+        el("span", { class: "qmeta", text: `${idx + 1} / ${mockState.queue.length}` }),
+        el("span", { class: "pill", text: THEMES[q.theme]?.name })
+      ]),
+      el("div", { class: "qtitle", text: q.title }),
+      el("p", { class: "qprompt", text: q.prompt }),
+      details,
+      rateRow
+    ]);
+  });
+
+  mount(
+    el("h1", { text: "Rate the mock" }),
+    el("p", { class: "muted", text: "1 = fumbled · 5 = clean. Open the answer while rating if it helps." }),
+    ...cards,
+    el("button", { class: "btn block", style: { marginTop: "16px" }, onClick: saveAll }, ["save + finish"])
+  );
+}
+
+// ---------- history ----------
+
+function renderHistory() {
+  const nodes = [el("h1", { text: "history" })];
+
+  if (!state.logs.length) {
+    nodes.push(el("div", { class: "empty" }, [el("p", { text: "No practice yet. Start from home." })]));
+    mount(...nodes);
+    return;
+  }
+
+  // group by date
+  const byDate = {};
+  for (const l of state.logs) {
+    const t = l.ts?.toDate?.();
+    if (!t) continue;
+    const key = t.toLocaleDateString();
+    (byDate[key] ||= []).push(l);
+  }
+
+  for (const [date, logs] of Object.entries(byDate)) {
+    nodes.push(el("h2", { text: date }));
+    nodes.push(el("div", { class: "card" }, logs.map((l) => {
+      const q = state.questionsById[l.questionId];
+      return el("div", { class: "log-row" }, [
+        el("span", { class: "log-mode", text: l.mode }),
+        el("span", { text: q?.title || l.questionId, style: { flex: "1", overflow: "hidden", textOverflow: "ellipsis" } }),
+        el("span", { text: `${l.rating}/5`, class: "qmeta" })
+      ]);
+    })));
+  }
+
+  mount(...nodes);
+}
+
+// ---------- edit ----------
+
+function renderEdit(qid) {
+  const q = state.questionsById[qid];
+  if (!q) { go("list"); return; }
+
+  const titleInput = el("input", { type: "text", value: q.title });
+  const anchorInput = el("textarea", { class: "compact" }, [q.anchor || ""]);
+  const answerInput = el("textarea", {}, [q.answer || ""]);
+  const beatsInput = el("textarea", { class: "compact" }, [(q.beats || []).join("\n")]);
+
+  async function save() {
+    const patch = {
+      title: titleInput.value.trim() || q.title,
+      anchor: anchorInput.value.trim(),
+      answer: answerInput.value,
+      beats: beatsInput.value.split("\n").map((s) => s.trim()).filter(Boolean)
+    };
+    await saveQuestion(state.user.uid, qid, patch);
+    await refreshData();
+    go(`detail/${qid}`);
+  }
+
+  mount(
+    el("h1", { text: "edit" }),
+    el("div", { class: "card" }, [
+      el("h3", { text: "title" }),
+      titleInput,
+      el("h3", { text: "anchor phrase" }),
+      anchorInput,
+      el("h3", { text: "answer (markdown bullets)" }),
+      answerInput,
+      q.type === "story" ? el("h3", { text: "story beats (one per line)" }) : null,
+      q.type === "story" ? beatsInput : null
+    ]),
+    el("div", { class: "row stretch" }, [
+      el("button", { class: "btn", onClick: save }, ["save"]),
+      el("button", { class: "btn ghost", onClick: () => go(`detail/${qid}`) }, ["cancel"])
+    ])
+  );
+}
