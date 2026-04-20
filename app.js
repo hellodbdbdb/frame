@@ -621,19 +621,19 @@ function renderDrill(mode, qid) {
     el("button", { class: "btn block", onClick: flipToBack }, ["reveal answer"])
   ]);
 
-  // --- back: question reminder + anchor + answer + (beats) + rating + post-rating ---
+  // --- back: question reminder + anchor + story beats + answer + rating ---
   const backInner = document.createElement("div");
   const beatsHtml = q.beats?.length
-    ? `<h3>story beats</h3><ol>${q.beats.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ol>`
+    ? `<h3>story beats</h3><ol>${q.beats.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ol><hr class="hair"/>`
     : "";
   backInner.innerHTML = `
     <p class="back-question">${escapeHtml(q.prompt)}</p>
     <h3>anchor</h3>
     <p class="anchor-text">${escapeHtml(q.anchor || "")}</p>
     <hr class="hair"/>
+    ${beatsHtml}
     <h3>answer</h3>
     <div class="answer-body">${mdToHtml(q.answer || "")}</div>
-    ${beatsHtml}
   `;
 
   const ratingRow = el("div", { class: "rating-row" }, [1, 2, 3, 4, 5].map((n) => {
