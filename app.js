@@ -399,15 +399,57 @@ function renderError(err) {
 
 function renderHome() {
   const r = readiness();
-  const reps = repsThisWeek();
   const weak = weakSpots(3);
 
-  // --- hero readiness card (dark emerald) ---
+  // --- compact stat bar ---
+  const sameDay = (a, b) => a && b && a.toDateString() === b.toDateString();
+  const today = new Date();
+  const yesterday = new Date(today.getTime() - 86400000);
+  const ratingsOn = (date) => state.logs
+    .map((l) => ({ t: l.ts?.toDate?.(), rating: l.rating }))
+    .filter((x) => x.t && sameDay(x.t, date) && typeof x.rating === "number");
+  const avg = (arr) => arr.length
+    ? arr.reduce((s, x) => s + (x.rating || 0), 0) / arr.length
+    : null;
+
+  const todayRatings = ratingsOn(today);
+  const yesterdayRatings = ratingsOn(yesterday);
+  const allRatings = state.logs
+    .map((l) => l.rating)
+    .filter((v) => typeof v === "number");
+
+  const todayCount = todayRatings.length;
+  const todayAvg = avg(todayRatings);
+  const yAvg = avg(yesterdayRatings);
+  const allAvg = allRatings.length
+    ? allRatings.reduce((s, v) => s + v, 0) / allRatings.length
+    : null;
+
+  let trendSym = "\u2192"; // neutral
+  let trendCls = "";
+  if (todayAvg != null && yAvg != null) {
+    if (todayAvg > yAvg + 0.05) { trendSym = "\u2191"; trendCls = "up"; }
+    else if (todayAvg < yAvg - 0.05) { trendSym = "\u2193"; trendCls = "down"; }
+  }
+
+  function stat(label, valueText, extra) {
+    const valueChildren = [document.createTextNode(valueText)];
+    if (extra) valueChildren.push(extra);
+    return el("div", { class: "stat" }, [
+      el("div", { class: "stat-label", text: label }),
+      el("div", { class: "stat-value" }, valueChildren)
+    ]);
+  }
+
   const hero = el("section", { class: "hero-readiness" }, [
-    el("div", { class: "score-label", text: "Readiness" }),
-    el("div", { class: "score", html: `${r}<span class="slash">/100</span>` }),
-    el("p", { class: "score-caption", text: `${reps} reps this week · ${state.questions.length} questions in the library` }),
-    el("span", { class: "wordmark-hero", text: "/frame" })
+    stat("Ready", String(r)),
+    stat("Today", String(todayCount)),
+    stat("Today avg", todayAvg != null ? todayAvg.toFixed(1) : "\u2014"),
+    stat(
+      "All avg",
+      allAvg != null ? allAvg.toFixed(1) : "\u2014",
+      el("span", { class: `stat-trend ${trendCls}`, text: trendSym, "aria-hidden": "true" })
+    )
   ]);
 
   // --- tile factory ---

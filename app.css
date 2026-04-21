@@ -607,47 +607,52 @@ details[open] summary { margin-bottom: 8px; color: var(--fg); }
 .action-card.dark .wordmark { color: rgba(236, 233, 226, 0.5); }
 .action-card.mint .wordmark { color: rgba(13, 74, 58, 0.5); }
 
-/* readiness hero */
+/* readiness hero (compact 4-stat bar) */
 .hero-readiness {
   background: var(--accent-deep);
   color: #ece9e2;
   border-radius: var(--radius-lg);
-  padding: 14px 18px;
+  padding: 12px 14px;
   margin-bottom: 10px;
   position: relative;
   overflow: hidden;
   display: flex;
-  align-items: baseline;
-  gap: 14px;
+  gap: 6px;
 }
-.hero-readiness .score {
-  font-family: var(--font-display);
-  font-size: 44px;
-  font-weight: 800;
-  letter-spacing: -0.05em;
-  line-height: 1;
-  margin: 0;
-  flex-shrink: 0;
-}
-.hero-readiness .score .slash { color: rgba(236, 233, 226, 0.4); font-weight: 500; font-size: 0.6em; }
-.hero-readiness .score-label {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: rgba(236, 233, 226, 0.55);
-  align-self: center;
-}
-.hero-readiness .score-caption {
-  font-size: 12px;
-  font-weight: 500;
-  color: rgba(236, 233, 226, 0.7);
-  margin: 0;
+.hero-readiness .stat {
   flex: 1;
   min-width: 0;
-  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-.hero-readiness .wordmark-hero { display: none; }
+.hero-readiness .stat-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(236, 233, 226, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hero-readiness .stat-value {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.hero-readiness .stat-trend {
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(236, 233, 226, 0.6);
+}
+.hero-readiness .stat-trend.up { color: #9fe8c8; }
+.hero-readiness .stat-trend.down { color: #e8a29f; }
 
 /* ── mock ──────────────────────────────────────── */
 .mock-question-list { counter-reset: mock; padding: 0; list-style: none; }
