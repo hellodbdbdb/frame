@@ -533,13 +533,17 @@ function renderList() {
       el("div", { class: "theme-head" }, [
         el("span", { class: "theme-name", text: name })
       ]),
-      ...items.map((q) =>
-        el("button", { class: "question-row", onClick: () => go(`detail/${q.id}`) }, [
+      ...items.map((q) => {
+        const qLogs = state.logs.filter((l) => l.questionId === q.id && typeof l.rating === "number");
+        const count = qLogs.length;
+        const avg = count ? qLogs.reduce((s, l) => s + l.rating, 0) / count : null;
+        const metaText = count ? `${count}\u00d7 \u00b7 ${avg.toFixed(1)}` : "new";
+        return el("button", { class: "question-row", onClick: () => go(`detail/${q.id}`) }, [
           strengthDot(strengthFor(q.id)),
           el("span", { class: "qtitle", text: q.title }),
-          el("span", { class: "qmeta", text: stalenessLabel(q.id) })
-        ])
-      )
+          el("span", { class: "qmeta", text: metaText })
+        ]);
+      })
     ]));
   }
   mount(...nodes);
