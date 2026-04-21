@@ -609,11 +609,13 @@ details[open] summary { margin-bottom: 8px; color: var(--fg); }
 
 /* readiness hero (compact 4-stat bar) */
 .hero-readiness {
-  background: var(--accent-deep);
-  color: #ece9e2;
+  background: var(--surface);
+  color: var(--fg);
+  border: 1px solid var(--hair);
   border-radius: var(--radius-lg);
   padding: 12px 14px;
   margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
   position: relative;
   overflow: hidden;
   display: flex;
@@ -631,7 +633,7 @@ details[open] summary { margin-bottom: 8px; color: var(--fg); }
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: rgba(236, 233, 226, 0.55);
+  color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -642,6 +644,7 @@ details[open] summary { margin-bottom: 8px; color: var(--fg); }
   font-weight: 800;
   letter-spacing: -0.03em;
   line-height: 1;
+  color: var(--fg);
   display: inline-flex;
   align-items: baseline;
   gap: 4px;
@@ -649,10 +652,10 @@ details[open] summary { margin-bottom: 8px; color: var(--fg); }
 .hero-readiness .stat-trend {
   font-size: 14px;
   font-weight: 700;
-  color: rgba(236, 233, 226, 0.6);
+  color: var(--muted);
 }
-.hero-readiness .stat-trend.up { color: #9fe8c8; }
-.hero-readiness .stat-trend.down { color: #e8a29f; }
+.hero-readiness .stat-trend.up { color: var(--good); }
+.hero-readiness .stat-trend.down { color: var(--bad); }
 
 /* ── mock ──────────────────────────────────────── */
 .mock-question-list { counter-reset: mock; padding: 0; list-style: none; }

@@ -474,7 +474,7 @@ function renderHome() {
 
   const tiles = el("div", { class: "bento" }, [
     tile({
-      variant: "dark",
+      variant: "mint",
       kicker: "focus",
       title: "Improve",
       copy: `${weak.length} questions picked by low strength × high staleness`,
@@ -495,7 +495,7 @@ function renderHome() {
       }
     }),
     tile({
-      variant: "",
+      variant: "mint",
       kicker: "timed",
       title: "Live",
       copy: "Cold draw, timed per question. Rate each one after.",
