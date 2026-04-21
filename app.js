@@ -453,12 +453,11 @@ function renderHome() {
   ]);
 
   // --- tile factory ---
-  function tile({ variant, kicker, title, copy, cta, letter, extraClass, onClick }) {
+  function tile({ variant, kicker, title, copy, cta, extraClass, onClick }) {
     const cls = "action-card"
       + (variant ? " " + variant : "")
       + (extraClass ? " " + extraClass : "");
     return el("button", { class: cls, onClick }, [
-      letter ? el("span", { class: "bg-letter", text: letter, "aria-hidden": "true" }) : null,
       el("div", {}, [
         el("div", { class: "kicker", text: kicker }),
         el("h3", { text: title }),
@@ -467,9 +466,8 @@ function renderHome() {
       el("div", { class: "card-cta" }, [
         el("span", { text: cta }),
         el("span", { class: "arrow", "aria-hidden": "true", text: "\u2192" })
-      ]),
-      el("span", { class: "wordmark", text: "/frame" })
-    ].filter(Boolean));
+      ])
+    ]);
   }
 
   const tiles = el("div", { class: "bento" }, [
