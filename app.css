@@ -829,6 +829,13 @@ details[open] summary { margin-bottom: 8px; color: var(--fg); }
   gap: 10px;
   margin: 12px 0 6px;
 }
+.history-day-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 20px 0 8px;
+}
 
 /* ── home tagline row ────────────────────────── */
 .home-tagline {

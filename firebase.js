@@ -211,6 +211,18 @@ export async function clearAllLogs(uid) {
   return docs.length;
 }
 
+export async function clearLogsByIds(uid, ids) {
+  if (!ids.length) return 0;
+  for (let i = 0; i < ids.length; i += 450) {
+    const batch = writeBatch(db);
+    for (const id of ids.slice(i, i + 450)) {
+      batch.delete(doc(db, "users", uid, "logs", id));
+    }
+    await batch.commit();
+  }
+  return ids.length;
+}
+
 // ---------- sessions ----------
 
 export async function startSession(uid, mode, meta = {}) {

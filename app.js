@@ -12,6 +12,7 @@ import {
   logPractice,
   loadLogs,
   clearAllLogs,
+  clearLogsByIds,
   startSession,
   endSession,
   loadSessions
@@ -1058,7 +1059,10 @@ function renderHistory() {
   }
 
   for (const [date, logs] of Object.entries(byDate)) {
-    nodes.push(el("h2", { text: date }));
+    nodes.push(el("div", { class: "history-day-head" }, [
+      el("h2", { text: date, style: { margin: "0" } }),
+      el("button", { class: "btn ghost small", onClick: () => handleDeleteDay(date, logs) }, ["delete"])
+    ]));
     nodes.push(el("div", { class: "card" }, logs.map((l) => {
       const q = state.questionsById[l.questionId];
       return el("div", { class: "log-row" }, [
@@ -1070,6 +1074,19 @@ function renderHistory() {
   }
 
   mount(...nodes);
+}
+
+async function handleDeleteDay(date, logs) {
+  const n = logs.length;
+  if (!confirm(`Delete ${n} log${n === 1 ? "" : "s"} from ${date}?`)) return;
+  try {
+    const ids = logs.map((l) => l.id).filter(Boolean);
+    await clearLogsByIds(state.user.uid, ids);
+    await refreshData();
+    renderHistory();
+  } catch (err) {
+    alert("Could not delete: " + (err?.message || err));
+  }
 }
 
 // ---------- edit ----------
