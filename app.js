@@ -75,9 +75,77 @@ window.addEventListener("DOMContentLoaded", () => {
   handleRedirect(); // resolves any pending redirect sign-in
   wireTopbar();
   wireBottombar();
+  wirePullToRefresh();
   window.addEventListener("hashchange", renderRoute);
   onAuth(onAuthChange);
 });
+
+function wirePullToRefresh() {
+  const ptr = document.getElementById("ptr");
+  if (!ptr) return;
+  const label = ptr.querySelector(".ptr-label");
+  const THRESHOLD = 72;
+  const MAX = 120;
+  let startY = 0;
+  let pulled = 0;
+  let active = false;
+  let working = false;
+
+  function canPull() {
+    return state.user && state.loaded && state.route === "home" && window.scrollY <= 0 && !working;
+  }
+
+  window.addEventListener("touchstart", (e) => {
+    if (!canPull()) { active = false; return; }
+    startY = e.touches[0].clientY;
+    pulled = 0;
+    active = true;
+  }, { passive: true });
+
+  window.addEventListener("touchmove", (e) => {
+    if (!active) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy <= 0) {
+      ptr.style.transform = "";
+      ptr.classList.remove("ready");
+      pulled = 0;
+      return;
+    }
+    pulled = Math.min(dy, MAX);
+    // diminishing-returns drag feel
+    const eased = pulled < THRESHOLD ? pulled : THRESHOLD + (pulled - THRESHOLD) * 0.35;
+    ptr.style.transform = `translateY(${eased}px)`;
+    const ready = pulled >= THRESHOLD;
+    ptr.classList.toggle("ready", ready);
+    if (label) label.textContent = ready ? "release to refresh" : "pull to refresh";
+  }, { passive: true });
+
+  window.addEventListener("touchend", async () => {
+    if (!active) return;
+    active = false;
+    if (pulled >= THRESHOLD && canPull()) {
+      working = true;
+      ptr.classList.add("loading");
+      if (label) label.textContent = "refreshing…";
+      ptr.style.transform = `translateY(${THRESHOLD}px)`;
+      try {
+        await refreshData();
+        if (state.route === "home") renderHome();
+      } catch (err) {
+        console.error(err);
+      } finally {
+        ptr.classList.remove("loading", "ready");
+        ptr.style.transform = "";
+        if (label) label.textContent = "pull to refresh";
+        working = false;
+      }
+    } else {
+      ptr.style.transform = "";
+      ptr.classList.remove("ready");
+    }
+    pulled = 0;
+  });
+}
 
 function wireTopbar() {
   document.querySelector(".brand")?.addEventListener("click", () => go("home"));
@@ -484,12 +552,30 @@ function renderHome() {
       variant: "mint",
       kicker: "breadth",
       title: "Random",
-      copy: "10 random questions across every theme, in sequence",
+      copy: "10 picks — least-practiced first, shuffled within ties",
       cta: "Start run",
       letter: "r",
       onClick: () => {
-        const qids = [...state.questions].sort(() => Math.random() - 0.5).slice(0, 10).map((q) => q.id);
-        startDrillPool("Random", qids);
+        const repCount = Object.fromEntries(state.questions.map((q) => [q.id, 0]));
+        for (const l of state.logs) {
+          if (l.questionId in repCount) repCount[l.questionId] += 1;
+        }
+        const byCount = new Map();
+        for (const q of state.questions) {
+          const c = repCount[q.id];
+          if (!byCount.has(c)) byCount.set(c, []);
+          byCount.get(c).push(q);
+        }
+        const picked = [];
+        for (const c of [...byCount.keys()].sort((a, b) => a - b)) {
+          if (picked.length >= 10) break;
+          const bucket = [...byCount.get(c)].sort(() => Math.random() - 0.5);
+          for (const q of bucket) {
+            picked.push(q.id);
+            if (picked.length >= 10) break;
+          }
+        }
+        startDrillPool("Random", picked);
       }
     }),
     tile({
