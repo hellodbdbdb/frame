@@ -754,19 +754,13 @@ function renderDrill(mode, qid) {
   ]);
 
   // --- back: question reminder + anchor + story beats + answer + rating ---
-  const backInner = document.createElement("div");
-  const beatsHtml = q.beats?.length
-    ? `<h3>story beats</h3><ol>${q.beats.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ol><hr class="hair"/>`
-    : "";
-  backInner.innerHTML = `
-    <p class="back-question">${escapeHtml(q.prompt)}</p>
-    <h3>anchor</h3>
-    <p class="anchor-text">${escapeHtml(q.anchor || "")}</p>
-    <hr class="hair"/>
-    ${beatsHtml}
-    <h3>answer</h3>
-    <div class="answer-body">${mdToHtml(q.answer || "")}</div>
-  `;
+  const backInner = el("div", {}, [
+    el("p", { class: "back-question", text: q.prompt }),
+    el("hr", { class: "hair" }),
+    buildDrillAnchorSection(q, qid),
+    buildDrillBeatsSection(q, qid),
+    buildDrillAnswerSection(q, qid)
+  ]);
 
   const ratingRow = el("div", { class: "rating-row" }, [1, 2, 3, 4, 5].map((n) => {
     const b = el("button", { class: "btn secondary", onClick: () => handleRate(n, b) }, [String(n)]);
@@ -893,6 +887,144 @@ function buildAnchorCard(q, qid) {
 
   showView();
   return card;
+}
+
+function buildDrillAnchorSection(q, qid) {
+  const wrap = document.createElement("div");
+  wrap.className = "drill-section";
+
+  function showView() {
+    wrap.innerHTML = "";
+    wrap.appendChild(el("div", { class: "drill-section-head" }, [
+      el("h3", { text: "anchor" }),
+      el("button", { class: "btn ghost small", onClick: showEdit }, ["edit"])
+    ]));
+    wrap.appendChild(el("p", { class: "anchor-text", text: q.anchor || "\u2014" }));
+  }
+
+  function showEdit() {
+    wrap.innerHTML = "";
+    const ta = el("textarea", { class: "compact" }, [q.anchor || ""]);
+    const saveBtn = el("button", { class: "btn small", onClick: async () => {
+      const next = ta.value.trim();
+      saveBtn.setAttribute("disabled", "");
+      try {
+        await saveQuestion(state.user.uid, qid, { anchor: next });
+        q.anchor = next;
+        if (state.questionsById[qid]) state.questionsById[qid].anchor = next;
+        showView();
+      } catch (err) {
+        saveBtn.removeAttribute("disabled");
+        alert("Could not save: " + (err?.message || err));
+      }
+    }}, ["save"]);
+    wrap.appendChild(el("h3", { text: "anchor" }));
+    wrap.appendChild(ta);
+    wrap.appendChild(el("div", { class: "row", style: { marginTop: "8px", gap: "8px" } }, [
+      saveBtn,
+      el("button", { class: "btn ghost small", onClick: showView }, ["cancel"])
+    ]));
+    ta.focus();
+  }
+
+  showView();
+  return wrap;
+}
+
+function buildDrillBeatsSection(q, qid) {
+  const wrap = document.createElement("div");
+  wrap.className = "drill-section";
+
+  function showView() {
+    wrap.innerHTML = "";
+    wrap.appendChild(el("div", { class: "drill-section-head" }, [
+      el("h3", { text: "story beats" }),
+      el("button", { class: "btn ghost small", onClick: showEdit }, ["edit"])
+    ]));
+    const beats = q.beats || [];
+    if (beats.length) {
+      const ol = document.createElement("ol");
+      for (const b of beats) ol.appendChild(el("li", { text: b }));
+      wrap.appendChild(ol);
+    } else {
+      wrap.appendChild(el("p", { class: "muted", text: "No beats yet. Tap edit to add." }));
+    }
+  }
+
+  function showEdit() {
+    wrap.innerHTML = "";
+    const ta = el("textarea", { class: "compact" }, [(q.beats || []).join("\n")]);
+    const saveBtn = el("button", { class: "btn small", onClick: async () => {
+      const next = ta.value.split("\n").map((s) => s.trim()).filter(Boolean);
+      saveBtn.setAttribute("disabled", "");
+      try {
+        await saveQuestion(state.user.uid, qid, { beats: next });
+        q.beats = next;
+        if (state.questionsById[qid]) state.questionsById[qid].beats = next;
+        showView();
+      } catch (err) {
+        saveBtn.removeAttribute("disabled");
+        alert("Could not save: " + (err?.message || err));
+      }
+    }}, ["save"]);
+    wrap.appendChild(el("h3", { text: "story beats" }));
+    wrap.appendChild(el("p", { class: "muted", text: "One beat per line." }));
+    wrap.appendChild(ta);
+    wrap.appendChild(el("div", { class: "row", style: { marginTop: "8px", gap: "8px" } }, [
+      saveBtn,
+      el("button", { class: "btn ghost small", onClick: showView }, ["cancel"])
+    ]));
+    ta.focus();
+  }
+
+  showView();
+  return wrap;
+}
+
+function buildDrillAnswerSection(q, qid) {
+  const wrap = document.createElement("div");
+  wrap.className = "drill-section";
+
+  function showView() {
+    wrap.innerHTML = "";
+    wrap.appendChild(el("div", { class: "drill-section-head" }, [
+      el("h3", { text: "answer" }),
+      el("button", { class: "btn ghost small", onClick: showEdit }, ["edit"])
+    ]));
+    const body = document.createElement("div");
+    body.className = "answer-body";
+    body.innerHTML = mdToHtml(q.answer || "");
+    wrap.appendChild(body);
+  }
+
+  function showEdit() {
+    wrap.innerHTML = "";
+    const ta = el("textarea", {}, [q.answer || ""]);
+    const saveBtn = el("button", { class: "btn small", onClick: async () => {
+      const next = ta.value;
+      saveBtn.setAttribute("disabled", "");
+      try {
+        await saveQuestion(state.user.uid, qid, { answer: next });
+        q.answer = next;
+        if (state.questionsById[qid]) state.questionsById[qid].answer = next;
+        showView();
+      } catch (err) {
+        saveBtn.removeAttribute("disabled");
+        alert("Could not save: " + (err?.message || err));
+      }
+    }}, ["save"]);
+    wrap.appendChild(el("h3", { text: "answer" }));
+    wrap.appendChild(el("p", { class: "muted", text: "Markdown bullets supported." }));
+    wrap.appendChild(ta);
+    wrap.appendChild(el("div", { class: "row", style: { marginTop: "8px", gap: "8px" } }, [
+      saveBtn,
+      el("button", { class: "btn ghost small", onClick: showView }, ["cancel"])
+    ]));
+    ta.focus();
+  }
+
+  showView();
+  return wrap;
 }
 
 function buildBeatsCard(q, qid) {

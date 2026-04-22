@@ -726,6 +726,24 @@ details[open] summary { margin-bottom: 8px; color: var(--fg); }
 }
 .flipcard .card .drill-prompt { flex: 1; display: flex; align-items: center; }
 
+/* ── drill sections (editable anchor / beats / answer) ── */
+.drill-section {
+  margin: 14px 0;
+}
+.drill-section + .drill-section {
+  border-top: 1px solid var(--hair);
+  padding-top: 14px;
+}
+.drill-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.drill-section-head h3 { margin: 0; }
+.drill-section ol { padding-left: 20px; margin: 6px 0 0; }
+
 /* ── drill-actions (below card, above menu) ──── */
 .drill-actions {
   display: flex;
