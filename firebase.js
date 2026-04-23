@@ -179,6 +179,25 @@ export async function saveQuestion(uid, qid, patch) {
   });
 }
 
+export async function createQuestion(uid, data) {
+  const ref = await addDoc(questionsCol(uid), {
+    order: typeof data.order === "number" ? data.order : Date.now(),
+    theme: data.theme,
+    type: data.type || "framework",
+    title: data.title,
+    prompt: data.prompt || "",
+    answer: data.answer || "",
+    anchor: data.anchor || "",
+    beats: Array.isArray(data.beats) ? data.beats : [],
+    baseline: data.baseline || 3,
+    custom: true,
+    createdAt: serverTimestamp(),
+    lastEditedAt: serverTimestamp()
+  });
+  return ref.id;
+}
+
+
 // ---------- logs ----------
 
 export async function logPractice(uid, entry) {

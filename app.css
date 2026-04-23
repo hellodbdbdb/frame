@@ -847,6 +847,15 @@ details[open] summary { margin-bottom: 8px; color: var(--fg); }
 }
 .anchor-head h3 { margin: 0; }
 
+/* ── library header ──────────────────────────── */
+.list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 12px 0 14px;
+}
+
 /* ── history header ──────────────────────────── */
 .history-head {
   display: flex;

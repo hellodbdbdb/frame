@@ -9,6 +9,7 @@ import {
   ensureSeed,
   loadQuestions,
   saveQuestion,
+  createQuestion,
   logPractice,
   loadLogs,
   clearAllLogs,
@@ -258,6 +259,7 @@ function renderRoute() {
     case "mock-rate": renderMockRate(); break;
     case "history": renderHistory(); break;
     case "edit":    renderEdit(rest[0]); break;
+    case "new":     renderNew(); break;
     case "weak":    renderSet("weak"); break;
     case "cold":    renderSet("cold"); break;
     case "neglected": renderSet("neglected"); break;
@@ -277,6 +279,7 @@ function setActiveNav(name) {
     drill: "drill",
     detail: "list",
     edit: "list",
+    new: "list",
     weak: "list",
     cold: "list",
     neglected: "list",
@@ -611,7 +614,15 @@ function renderList() {
   for (const q of state.questions) {
     (grouped[q.theme] ||= []).push(q);
   }
-  const nodes = [el("h1", { text: "library" })];
+  const nodes = [
+    el("div", { class: "list-head" }, [
+      el("h1", { text: "library", style: { margin: "0" } }),
+      el("button", { class: "btn small", onClick: () => go("new") }, [
+        el("span", { text: "new" }),
+        el("span", { class: "arrow", "aria-hidden": "true", text: "+" })
+      ])
+    ])
+  ];
   for (const [t, name] of Object.entries(THEMES).map(([k, v]) => [k, v.name])) {
     const items = grouped[t] || [];
     if (!items.length) continue;
@@ -1391,4 +1402,80 @@ function renderEdit(qid) {
       el("button", { class: "btn ghost", onClick: () => go(`detail/${qid}`) }, ["cancel"])
     ])
   );
+}
+
+// ---------- new question ----------
+
+function renderNew() {
+  const titleInput = el("input", { type: "text", placeholder: "Short title" });
+  const promptInput = el("textarea", { class: "compact", placeholder: "The interviewer's question as you want it framed" });
+
+  const themeSelect = el("select", { id: "newTheme" },
+    Object.entries(THEMES).map(([k, v]) =>
+      el("option", { value: k }, [`${k} · ${v.name}`])
+    )
+  );
+
+  const typeSelect = el("select", { id: "newType" }, [
+    el("option", { value: "framework" }, ["framework"]),
+    el("option", { value: "story" }, ["story"])
+  ]);
+
+  const anchorInput = el("textarea", { class: "compact", placeholder: "One or two sentences to land" });
+  const beatsInput = el("textarea", { class: "compact", placeholder: "One beat per line" });
+  const answerInput = el("textarea", { placeholder: "Use - bullets. Markdown supported." });
+
+  async function save() {
+    const title = titleInput.value.trim();
+    if (!title) { alert("A title helps you find it later."); titleInput.focus(); return; }
+    const data = {
+      title,
+      prompt: promptInput.value.trim(),
+      theme: themeSelect.value,
+      type: typeSelect.value,
+      anchor: anchorInput.value.trim(),
+      beats: beatsInput.value.split("\n").map((s) => s.trim()).filter(Boolean),
+      answer: answerInput.value
+    };
+    saveBtn.setAttribute("disabled", "");
+    try {
+      const newId = await createQuestion(state.user.uid, data);
+      await refreshData();
+      go(`detail/${newId}`);
+    } catch (err) {
+      saveBtn.removeAttribute("disabled");
+      alert("Could not save: " + (err?.message || err));
+    }
+  }
+
+  const saveBtn = el("button", { class: "btn", onClick: save }, [
+    el("span", { text: "save" }),
+    el("span", { class: "arrow", "aria-hidden": "true", text: "\u2192" })
+  ]);
+
+  mount(
+    el("h1", { text: "new question" }),
+    el("p", { class: "muted", text: "Stored in your library. You can drill, live-run and edit it like any seed question." }),
+    el("div", { class: "card" }, [
+      el("h3", { text: "title" }),
+      titleInput,
+      el("h3", { text: "prompt" }),
+      promptInput,
+      el("h3", { text: "theme" }),
+      themeSelect,
+      el("h3", { text: "type" }),
+      typeSelect,
+      el("h3", { text: "anchor phrase" }),
+      anchorInput,
+      el("h3", { text: "story beats (one per line)" }),
+      beatsInput,
+      el("h3", { text: "answer (markdown bullets)" }),
+      answerInput
+    ]),
+    el("div", { class: "row stretch", style: { marginTop: "12px" } }, [
+      saveBtn,
+      el("button", { class: "btn ghost", onClick: () => go("list") }, ["cancel"])
+    ])
+  );
+  setTimeout(() => titleInput.focus(), 0);
 }
