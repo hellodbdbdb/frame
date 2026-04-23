@@ -704,10 +704,8 @@ function renderDetail(qid) {
   const nodes = [
     nav,
     el("h1", { text: q.title }),
-    el("div", { class: "card" }, [
-      el("h3", { text: "Question" }),
-      el("p", { text: q.prompt })
-    ]),
+    buildPromptCard(q, qid),
+    buildMetaCard(q, qid),
     buildAnchorCard(q, qid),
     buildBeatsCard(q, qid),
     el("div", { class: "card" }, [
@@ -853,6 +851,113 @@ function modeLabel(mode) {
   if (mode === "mock") return "live";
   if (mode === "drill") return "learn";
   return mode;
+}
+
+function buildPromptCard(q, qid) {
+  const card = el("div", { class: "card anchor-card" }, []);
+
+  function showView() {
+    card.innerHTML = "";
+    card.appendChild(el("div", { class: "anchor-head" }, [
+      el("h3", { text: "Question" }),
+      el("button", { class: "btn ghost small", onClick: showEdit }, ["edit"])
+    ]));
+    card.appendChild(el("p", {
+      text: q.prompt || "\u2014",
+      style: { margin: "6px 0 0" }
+    }));
+  }
+
+  function showEdit() {
+    card.innerHTML = "";
+    const ta = el("textarea", {}, [q.prompt || ""]);
+    const saveBtn = el("button", { class: "btn small", onClick: async () => {
+      const next = ta.value.trim();
+      saveBtn.setAttribute("disabled", "");
+      try {
+        await saveQuestion(state.user.uid, qid, { prompt: next });
+        q.prompt = next;
+        if (state.questionsById[qid]) state.questionsById[qid].prompt = next;
+        showView();
+      } catch (err) {
+        saveBtn.removeAttribute("disabled");
+        alert("Could not save: " + (err?.message || err));
+      }
+    }}, ["save"]);
+    card.appendChild(el("h3", { text: "Question" }));
+    card.appendChild(ta);
+    card.appendChild(el("div", { class: "row", style: { marginTop: "10px", gap: "8px" } }, [
+      saveBtn,
+      el("button", { class: "btn ghost small", onClick: showView }, ["cancel"])
+    ]));
+    ta.focus();
+  }
+
+  showView();
+  return card;
+}
+
+function buildMetaCard(q, qid) {
+  const card = el("div", { class: "card anchor-card" }, []);
+
+  function showView() {
+    card.innerHTML = "";
+    card.appendChild(el("div", { class: "anchor-head" }, [
+      el("h3", { text: "Theme & type" }),
+      el("button", { class: "btn ghost small", onClick: showEdit }, ["edit"])
+    ]));
+    const themeName = THEMES[q.theme]?.name || q.theme || "\u2014";
+    card.appendChild(el("p", { style: { margin: "6px 0 0" } }, [
+      document.createTextNode(`${themeName} · ${q.type || "\u2014"}`)
+    ]));
+  }
+
+  function showEdit() {
+    card.innerHTML = "";
+    const themeSelect = el("select", {},
+      Object.entries(THEMES).map(([k, v]) =>
+        el("option", { value: k, selected: k === q.theme }, [`${k} · ${v.name}`])
+      )
+    );
+    const typeSelect = el("select", {}, [
+      el("option", { value: "framework", selected: q.type === "framework" }, ["framework"]),
+      el("option", { value: "story", selected: q.type === "story" }, ["story"])
+    ]);
+    // ensure value reflects q even when el helper skipped the attribute
+    themeSelect.value = q.theme || themeSelect.options[0]?.value;
+    typeSelect.value = q.type || typeSelect.options[0]?.value;
+
+    const saveBtn = el("button", { class: "btn small", onClick: async () => {
+      const nextTheme = themeSelect.value;
+      const nextType = typeSelect.value;
+      saveBtn.setAttribute("disabled", "");
+      try {
+        await saveQuestion(state.user.uid, qid, { theme: nextTheme, type: nextType });
+        q.theme = nextTheme;
+        q.type = nextType;
+        if (state.questionsById[qid]) {
+          state.questionsById[qid].theme = nextTheme;
+          state.questionsById[qid].type = nextType;
+        }
+        showView();
+      } catch (err) {
+        saveBtn.removeAttribute("disabled");
+        alert("Could not save: " + (err?.message || err));
+      }
+    }}, ["save"]);
+
+    card.appendChild(el("h3", { text: "Theme" }));
+    card.appendChild(themeSelect);
+    card.appendChild(el("h3", { text: "Type" }));
+    card.appendChild(typeSelect);
+    card.appendChild(el("div", { class: "row", style: { marginTop: "10px", gap: "8px" } }, [
+      saveBtn,
+      el("button", { class: "btn ghost small", onClick: showView }, ["cancel"])
+    ]));
+  }
+
+  showView();
+  return card;
 }
 
 function buildAnchorCard(q, qid) {
