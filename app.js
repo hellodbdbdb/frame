@@ -10,6 +10,7 @@ import {
   loadQuestions,
   saveQuestion,
   createQuestion,
+  deleteQuestion,
   logPractice,
   loadLogs,
   clearAllLogs,
@@ -703,15 +704,12 @@ function renderDetail(qid) {
 
   const nodes = [
     nav,
-    el("h1", { text: q.title }),
+    buildTitleRow(q, qid),
     buildPromptCard(q, qid),
     buildMetaCard(q, qid),
     buildAnchorCard(q, qid),
     buildBeatsCard(q, qid),
-    el("div", { class: "card" }, [
-      el("h3", { text: "Your answer" }),
-      el("div", { class: "answer-body", html: mdToHtml(q.answer) })
-    ])
+    buildAnswerCard(q, qid)
   ];
 
   nodes.push(el("h2", { text: "Practice" }));
@@ -722,8 +720,8 @@ function renderDetail(qid) {
     ])
   ]));
 
-  nodes.push(el("div", { class: "row", style: { marginTop: "8px" } }, [
-    el("button", { class: "btn ghost small", onClick: () => go(`edit/${qid}`) }, ["edit"])
+  nodes.push(el("div", { class: "row", style: { marginTop: "8px", gap: "8px" } }, [
+    el("button", { class: "btn ghost small danger", onClick: () => handleDeleteQuestion(qid, q.title) }, ["delete"])
   ]));
 
   if (logs.length) {
@@ -851,6 +849,102 @@ function modeLabel(mode) {
   if (mode === "mock") return "live";
   if (mode === "drill") return "learn";
   return mode;
+}
+
+function buildTitleRow(q, qid) {
+  const wrap = el("div", { class: "title-row" });
+
+  function showView() {
+    wrap.innerHTML = "";
+    wrap.appendChild(el("h1", { text: q.title || "\u2014", style: { margin: "0" } }));
+    wrap.appendChild(el("button", { class: "btn ghost small", onClick: showEdit }, ["edit"]));
+  }
+
+  function showEdit() {
+    wrap.innerHTML = "";
+    const input = el("input", { type: "text", value: q.title || "", class: "title-input" });
+    const saveBtn = el("button", { class: "btn small", onClick: async () => {
+      const next = input.value.trim() || q.title;
+      saveBtn.setAttribute("disabled", "");
+      try {
+        await saveQuestion(state.user.uid, qid, { title: next });
+        q.title = next;
+        if (state.questionsById[qid]) state.questionsById[qid].title = next;
+        showView();
+      } catch (err) {
+        saveBtn.removeAttribute("disabled");
+        alert("Could not save: " + (err?.message || err));
+      }
+    }}, ["save"]);
+    wrap.appendChild(input);
+    wrap.appendChild(saveBtn);
+    wrap.appendChild(el("button", { class: "btn ghost small", onClick: showView }, ["cancel"]));
+    input.focus();
+    input.select();
+  }
+
+  showView();
+  return wrap;
+}
+
+function buildAnswerCard(q, qid) {
+  const card = el("div", { class: "card anchor-card" }, []);
+
+  function showView() {
+    card.innerHTML = "";
+    card.appendChild(el("div", { class: "anchor-head" }, [
+      el("h3", { text: "Your answer" }),
+      el("button", { class: "btn ghost small", onClick: showEdit }, ["edit"])
+    ]));
+    const body = document.createElement("div");
+    body.className = "answer-body";
+    if (q.answer) body.innerHTML = mdToHtml(q.answer);
+    else body.textContent = "\u2014";
+    card.appendChild(body);
+  }
+
+  function showEdit() {
+    card.innerHTML = "";
+    const ta = el("textarea", {}, [q.answer || ""]);
+    const saveBtn = el("button", { class: "btn small", onClick: async () => {
+      const next = ta.value;
+      saveBtn.setAttribute("disabled", "");
+      try {
+        await saveQuestion(state.user.uid, qid, { answer: next });
+        q.answer = next;
+        if (state.questionsById[qid]) state.questionsById[qid].answer = next;
+        showView();
+      } catch (err) {
+        saveBtn.removeAttribute("disabled");
+        alert("Could not save: " + (err?.message || err));
+      }
+    }}, ["save"]);
+    card.appendChild(el("h3", { text: "Your answer" }));
+    card.appendChild(el("p", { class: "muted", text: "Markdown bullets supported.", style: { margin: "2px 0 8px" } }));
+    card.appendChild(ta);
+    card.appendChild(el("div", { class: "row", style: { marginTop: "10px", gap: "8px" } }, [
+      saveBtn,
+      el("button", { class: "btn ghost small", onClick: showView }, ["cancel"])
+    ]));
+    ta.focus();
+  }
+
+  showView();
+  return card;
+}
+
+async function handleDeleteQuestion(qid, title) {
+  const relatedLogs = state.logs.filter((l) => l.questionId === qid).map((l) => l.id).filter(Boolean);
+  const tail = relatedLogs.length ? ` and ${relatedLogs.length} practice log${relatedLogs.length === 1 ? "" : "s"}` : "";
+  if (!confirm(`Delete "${title}"${tail}? This cannot be undone.`)) return;
+  try {
+    if (relatedLogs.length) await clearLogsByIds(state.user.uid, relatedLogs);
+    await deleteQuestion(state.user.uid, qid);
+    await refreshData();
+    go("list");
+  } catch (err) {
+    alert("Could not delete: " + (err?.message || err));
+  }
 }
 
 function buildPromptCard(q, qid) {

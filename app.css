@@ -847,6 +847,47 @@ details[open] summary { margin-bottom: 8px; color: var(--fg); }
 }
 .anchor-head h3 { margin: 0; }
 
+/* ── editable title row ──────────────────────── */
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 12px;
+  flex-wrap: wrap;
+}
+.title-row h1 { flex: 1; min-width: 0; }
+.title-input {
+  flex: 1;
+  min-width: 220px;
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  padding: 8px 12px;
+  border: 1px solid var(--hair);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg);
+}
+.title-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ── danger-leaning ghost button ─────────────── */
+.btn.ghost.danger,
+.btn.ghost[data-danger] {
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 30%, transparent);
+}
+.btn.ghost.danger:hover,
+.btn.ghost[data-danger]:hover {
+  background: var(--bad);
+  color: #fff;
+  border-color: var(--bad);
+}
+
 /* ── library header ──────────────────────────── */
 .list-head {
   display: flex;

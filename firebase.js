@@ -179,6 +179,10 @@ export async function saveQuestion(uid, qid, patch) {
   });
 }
 
+export async function deleteQuestion(uid, qid) {
+  await deleteDoc(questionDoc(uid, qid));
+}
+
 export async function createQuestion(uid, data) {
   const ref = await addDoc(questionsCol(uid), {
     order: typeof data.order === "number" ? data.order : Date.now(),
